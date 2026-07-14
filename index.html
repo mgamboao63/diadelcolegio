@@ -73,23 +73,22 @@ function leido(id){
  bloqueado=true;
 
  fetch(API_URL,{
-   method:"POST",
-   headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({id:id,juego:juegoSeleccionado})
- })
- .then(r=>r.json())
- .then(data=>{
-   const div=document.getElementById("resultado");
-   div.className="alert alert-success";
-   div.innerHTML="<b>"+(data.estudiante||id)+"</b><br>Juego: "+juegoSeleccionado;
-   setTimeout(()=>{bloqueado=false;},2000);
- })
- .catch(()=>{
-   const div=document.getElementById("resultado");
-   div.className="alert alert-danger";
-   div.innerHTML="Error al comunicar con la API";
-   setTimeout(()=>{bloqueado=false;},2000);
- });
+    method:"POST",
+    mode:"no-cors",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+        id:id,
+        juego:juegoSeleccionado
+    })
+})
+.then(()=>{
+    // Mostrar éxito
+})
+.catch(()=>{
+    // Mostrar error
+});
 }
 </script>
 </body>
