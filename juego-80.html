@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Juego del 80% | Brasilia Borderland</title>
+  <style>
+    :root { --azul:#102b4e; --azul2:#1767a6; --oro:#f5bd42; --fondo:#edf3f9; --texto:#17212f; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--fondo); color:var(--texto); font-family:Arial, sans-serif; }
+    header { background:linear-gradient(120deg,var(--azul),var(--azul2)); color:#fff; padding:22px; }
+    .encabezado { max-width:1180px; margin:auto; display:flex; justify-content:space-between; align-items:center; gap:16px; } .nav-acciones { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .nav-acciones button { padding:9px 12px; background:#ffffff20; border:1px solid #ffffff80; } .nav-acciones button:hover { background:#fff; color:var(--azul); }
+    h1,h2,p { margin-top:0; } h1 { font-size:clamp(1.5rem,4vw,2.25rem); margin-bottom:5px; } .subtitulo { color:#dbeeff; margin:0; }
+    main { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+    .card { background:#fff; border-radius:18px; padding:24px; box-shadow:0 9px 28px #18385315; margin-bottom:18px; }
+    .oculto { display:none !important; } .centrado { max-width:520px; margin:25px auto; }
+    label { display:block; font-weight:bold; margin:12px 0 7px; } input { width:100%; padding:13px; border:1px solid #cbd5e1; border-radius:10px; font-size:1rem; }
+    button { border:0; border-radius:10px; padding:12px 16px; font-size:1rem; font-weight:bold; cursor:pointer; background:var(--azul2); color:#fff; } button:hover { filter:brightness(1.08); } button:disabled { opacity:.5; cursor:not-allowed; }
+    .secundario { background:#e4edf6; color:var(--azul); } .peligro { background:#dc3545; } .exito { background:#16824b; } .oro { background:var(--oro); color:#3e2a00; }
+    .acciones { display:flex; flex-wrap:wrap; gap:10px; align-items:center; } .estado { border-radius:10px; padding:10px 14px; font-weight:bold; } .inscripcion { background:#e0f2fe; color:#075985; } .abierta { background:#dcfce7; color:#166534; } .cerrada,.finalizada { background:#fef3c7; color:#92400e; }
+    .mensaje { margin-top:14px; border-radius:10px; padding:12px; } .mensaje.error { background:#fee2e2; color:#991b1b; } .mensaje.ok { background:#dcfce7; color:#166534; } .mensaje.info { background:#dbeafe; color:#1e40af; }
+    .numeros { display:grid; grid-template-columns:repeat(7,1fr); gap:9px; margin-top:18px; } .numero { background:#e8f1fb; color:var(--azul); font-size:1.2rem; padding:15px 5px; } .numero:hover { background:var(--azul2); color:#fff; } .numero.seleccionado { background:var(--oro); color:#3e2a00; outline:4px solid #9a6200; outline-offset:2px; transform:scale(1.07); box-shadow:0 4px 12px #9a620055; }
+    .estadisticas { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; } .dato { background:#f1f7fc; border-radius:13px; padding:15px; text-align:center; } .dato b { display:block; font-size:1.55rem; color:var(--azul); }
+    .jugadores { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:13px; } .jugador { border:1px solid #e2e8f0; border-left:6px solid var(--color); border-radius:14px; padding:14px; background:#fff; }
+    .avatar { float:left; margin-right:10px; } .avatar img { width:48px; height:48px; object-fit:contain; } .nombre { font-weight:bold; } .alias { color:#64748b; font-size:.9rem; } .victorias { clear:both; margin-top:12px; font-weight:bold; color:#9a6200; }
+    .enviado { background:#e8fff0; color:#166534; display:inline-block; padding:4px 7px; border-radius:8px; margin-top:7px; font-size:.84rem; } .ganador { background:#fff6d8; border-color:var(--oro); box-shadow:0 0 0 2px #f5bd4240; }
+    .objetivo { background:linear-gradient(120deg,#fff4ca,#ffe08a); border:1px solid #f5bd42; text-align:center; border-radius:16px; padding:20px; margin-bottom:18px; } .objetivo b { font-size:2.2rem; color:#7a5100; }
+    .control-fila { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; } .leyenda { font-size:.9rem; color:#64748b; }
+    @media (max-width:560px) { .numeros { grid-template-columns:repeat(5,1fr); } .estadisticas { grid-template-columns:1fr; } header { padding:17px; } .card { padding:18px; } }
+  </style>
+</head>
+<body>
+  <header><div class="encabezado"><div><h1>♦ Juego del 80%</h1><p class="subtitulo" id="subtitulo">Elige el número más cercano al 80% del promedio.</p></div><div class="nav-acciones"><span id="modoEtiqueta"></span><button onclick="abrirControl()">Juez</button><button onclick="abrirVideobeam()">Videobeam</button></div></div></header>
+  <main>
+    <section id="vistaJugador" class="oculto">
+      <div id="registro" class="card centrado"><h2>Únete a la partida</h2><p>Escribe un nickname. Recibirás un avatar para las seis rondas.</p><form id="formRegistro"><label for="nickname">Nickname</label><input id="nickname" maxlength="20" required placeholder="Ej.: Neo80"><div id="mensajeRegistro"></div><button class="oro" style="margin-top:15px;width:100%">Entrar al juego</button></form></div>
+      <div id="panelJugador" class="card centrado oculto"><div id="estadoJugador"></div><div id="identidadJugador"></div><div id="respuestaJugador"></div></div>
+    </section>
+
+    <section id="vistaControl" class="oculto">
+      <div id="loginControl" class="card centrado"><h2>Control del juez</h2><p>Este modo inicia y cierra las rondas.</p><form id="formControl"><label for="clave">Clave de control</label><input id="clave" type="password" required><div id="mensajeControl"></div><button style="margin-top:15px;width:100%">Entrar al control</button></form></div>
+      <div id="panelControl" class="oculto"><div class="card"><div class="control-fila"><div><h2 class="mb">Panel de control</h2><div id="estadoControl"></div></div><div class="acciones"><button id="btnAbrir" class="exito" onclick="abrirRonda()">Abrir ronda</button><button id="btnCerrar" class="oro" onclick="cerrarRonda()">Cerrar y calificar</button><button class="peligro" onclick="reiniciarJuego()">Reiniciar juego</button></div></div><div id="mensajeAccion"></div></div><div id="controlJugadores"></div></div>
+    </section>
+
+    <section id="vistaVivo" class="oculto"><div id="contenidoVivo"></div></section>
+  </main>
+  <script>
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwEZb1vNUX_DzHOF0sNXKzoKJbhkypLJXDQhthY6FixGByywj5sPBo-lRu1bb-4cQCqoQ/exec';
+    const AVATARES = [
+      ['Rayo','rayo.png','#f59e0b'],['Fénix','fenix.png','#ef4444'],['Tigre','tigre.png','#f97316'],['Halcón','halcon.png','#3b82f6'],['Lobo','lobo.png','#64748b'],['Jaguar','jaguar.png','#a16207'],['Cometa','cometa.png','#8b5cf6'],['Titán','titan.png','#0f766e'],['Nébula','nebula.png','#6366f1'],['Vector','vector.png','#06b6d4']
+    ];
+    const modo = new URLSearchParams(location.search).get('modo') || 'jugador';
+    let datos = null, enviandoNumero = false;
+    let jugadorLocal = JSON.parse(localStorage.getItem('juego80Jugador') || 'null');
+    let claveControl = sessionStorage.getItem('juego80Control') || '';
+    const $ = id => document.getElementById(id);
+    const escapar = t => String(t ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    function avatar(j) { const a=AVATARES[j.avatarId] || ['Avatar','avatar.png','#64748b']; return {...j, avatarNombre:a[0], archivo:a[1], color:a[2]}; }
+    function etiquetaEstado(s) { return `<span class="estado ${s.estado}">${s.estado === 'inscripcion' ? 'Inscripción abierta' : s.estado === 'abierta' ? 'Ronda '+s.ronda+' abierta' : s.estado === 'cerrada' ? 'Ronda '+s.ronda+' calificada' : 'Partida finalizada'}</span>`; }
+    function mensaje(id,tipo,texto) { $(id).innerHTML=`<div class="mensaje ${tipo}">${texto}</div>`; }
+    function post(data) { return fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(data)}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json();}); }
+    async function cargar() { try { const r=await fetch(API_URL+'?accion=estado&_='+Date.now()); const d=await r.json(); if(d.error)throw Error(d.mensaje); datos=d; pintar(); } catch(e) { const destino=modo==='jugador'?'mensajeRegistro':modo==='control'?'mensajeAccion':'contenidoVivo'; if($(destino)) mensaje(destino,'error','No se pudo conectar: '+escapar(e.message)); } }
+    function tarjetas(jugadores, mostrarRespuesta=true) { return `<div class="jugadores">${jugadores.map(base=>{const j=avatar(base),r=j.respuesta;return `<div class="jugador ${r&&r.ganador?'ganador':''}" style="--color:${j.color}"><div class="avatar"><img src="${j.archivo}" alt="${escapar(j.avatarNombre)}"></div><div class="nombre">${escapar(j.nickname)}</div><div class="alias">${j.avatarNombre}</div>${r ? (r.enviado?'<span class="enviado">✓ Número enviado</span>':`<div class="victorias">Número: ${r.numero}${r.ganador?' · 🏆 Ganó ronda':''}</div>`) : ''}<div class="victorias">Victorias: ${j.victorias}</div></div>`;}).join('')}</div>`; }
+    function pintar() { if(!datos)return; if(modo==='jugador')pintarJugador(); if(modo==='control')pintarControl(); if(modo==='vivo')pintarVivo(); }
+    function pintarJugador() { const s=datos.sesion; const existe=jugadorLocal && jugadorLocal.sesionId===s.id && datos.jugadores.some(j=>j.playerId===jugadorLocal.playerId); $('registro').classList.toggle('oculto',!!existe || s.estado!=='inscripcion'); $('panelJugador').classList.toggle('oculto',!existe); if(!existe && s.estado!=='inscripcion') { $('registro').classList.remove('oculto'); $('registro').innerHTML='<h2>Espera la próxima partida</h2><p>La inscripción está cerrada. El juez abrirá una nueva partida pronto.</p>'; return; } if(!existe)return; const yo=avatar(datos.jugadores.find(j=>j.playerId===jugadorLocal.playerId)); $('estadoJugador').innerHTML=etiquetaEstado(s); $('identidadJugador').innerHTML=`<hr><div class="avatar"><img src="${yo.archivo}" alt="${escapar(yo.avatarNombre)}"></div><h2>${escapar(yo.nickname)}</h2><p class="alias">Tu avatar: ${yo.avatarNombre} · Victorias: ${yo.victorias}</p><hr>`; const respondio=!!yo.respuesta; if(s.estado==='abierta'&&!respondio) { $('respuestaJugador').innerHTML='<h3>Elige un número entre 0 y 20</h3><p class="leyenda">Solo podrás enviarlo una vez.</p><div class="numeros">'+Array.from({length:21},(_,i)=>`<button class="numero" onclick="enviarNumero(${i})">${i}</button>`).join('')+'</div>'; } else if(s.estado==='abierta') { $('respuestaJugador').innerHTML='<div class="mensaje ok">✓ Tu número fue enviado. Espera a que el juez cierre la ronda.</div>'; } else if((s.estado==='cerrada'||s.estado==='finalizada')&&s.objetivo!=null) { $('respuestaJugador').innerHTML=`<div class="objetivo">Objetivo de la ronda ${s.ronda}<br><b>${Number(s.objetivo).toFixed(2)}</b><br><span>Tu número: ${yo.respuesta?.numero ?? '-'}</span></div>`; } else { $('respuestaJugador').innerHTML='<div class="mensaje info">Espera a que el juez abra la primera ronda.</div>'; } }
+    function pintarControl() { if(!claveControl)return; $('loginControl').classList.add('oculto'); $('panelControl').classList.remove('oculto'); const s=datos.sesion; $('estadoControl').innerHTML=etiquetaEstado(s)+` <span class="leyenda"> · ${datos.jugadores.length}/10 participantes · ${s.ronda}/6 rondas</span>`; $('btnAbrir').disabled=s.estado==='abierta'||s.estado==='finalizada'; $('btnCerrar').disabled=s.estado!=='abierta'; $('controlJugadores').innerHTML='<div class="card"><h2>Participantes</h2>'+tarjetas(datos.jugadores)+'</div>'; }
+    function pintarVivo() { const s=datos.sesion; let objetivo=(s.estado==='cerrada'||s.estado==='finalizada')&&s.objetivo!=null?`<div class="objetivo"><div>80% del promedio</div><b>${Number(s.objetivo).toFixed(2)}</b><div class="leyenda">Ronda ${s.ronda}</div></div>`:''; $('contenidoVivo').innerHTML=`<div class="card"><div class="control-fila"><div><h2>Clasificación en vivo</h2>${etiquetaEstado(s)}</div><div class="leyenda">Actualización automática</div></div><div class="estadisticas"><div class="dato"><b>${s.ronda}/6</b>Rondas</div><div class="dato"><b>${datos.jugadores.length}/10</b>Participantes</div><div class="dato"><b>${datos.cantidadRespuestas}</b>Respuestas actuales</div></div>${objetivo}${tarjetas([...datos.jugadores].sort((a,b)=>b.victorias-a.victorias||a.avatarId-b.avatarId))}</div>`; }
+    async function enviarNumero(numero) { if(enviandoNumero) return; enviandoNumero=true; const botones=[...document.querySelectorAll('.numero')]; botones.forEach(b=>{b.disabled=true;if(Number(b.textContent)===numero)b.classList.add('seleccionado');}); try { const d=await post({accion:'enviarNumero',playerId:jugadorLocal.playerId,numero}); if(d.error)throw Error(d.mensaje); await cargar(); } catch(e) { botones.forEach(b=>b.disabled=false); mensaje('respuestaJugador','error',escapar(e.message)); } finally { enviandoNumero=false; } }
+    async function iniciarRegistro(e) { e.preventDefault(); try { const d=await post({accion:'registrarJugador',nickname:$('nickname').value}); if(d.error)throw Error(d.mensaje); jugadorLocal={sesionId:datos.sesion.id,playerId:d.jugador.playerId}; localStorage.setItem('juego80Jugador',JSON.stringify(jugadorLocal)); await cargar(); } catch(err) { mensaje('mensajeRegistro','error',escapar(err.message)); } }
+    async function accionControl(accion) { try { const d=await post({accion,clave:claveControl}); if(d.error)throw Error(d.mensaje); mensaje('mensajeAccion','ok',accion==='reiniciar'?'Nueva partida preparada.':'Acción realizada correctamente.'); if(accion==='reiniciar'){jugadorLocal=null;localStorage.removeItem('juego80Jugador');} await cargar(); } catch(e) { mensaje('mensajeAccion','error',escapar(e.message)); } }
+    const abrirRonda=()=>accionControl('abrirRonda'), cerrarRonda=()=>accionControl('cerrarRonda'), reiniciarJuego=()=>{if(confirm('¿Reiniciar? Se borrarán nicknames, respuestas y victorias de esta partida.'))accionControl('reiniciar');};
+    function abrirControl(){ location.href='juego-80-control.html'; }
+    function abrirVideobeam(){ window.open('juego-80-vivo.html','videobeam'); }
+    $('formRegistro').addEventListener('submit',iniciarRegistro); $('formControl').addEventListener('submit',e=>{e.preventDefault();claveControl=$('clave').value;sessionStorage.setItem('juego80Control',claveControl);cargar();});
+    $('vista'+(modo==='control'?'Control':modo==='vivo'?'Vivo':'Jugador')).classList.remove('oculto'); $('modoEtiqueta').textContent=modo==='control'?'CONTROL DEL JUEZ':modo==='vivo'?'PANTALLA EN VIVO':'PARTICIPANTE';
+    cargar(); setInterval(cargar,2000);
+  </script>
+</body>
+</html>
