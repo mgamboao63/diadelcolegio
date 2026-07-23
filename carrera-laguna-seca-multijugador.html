@@ -1,0 +1,1758 @@
+<div id="carrera-laguna-seca-3d" class="race-prototype-3d">
+  <!-- Fuente Orbitron para estética de simulador -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+  <style>
+    #carrera-laguna-seca-3d {
+      width: 100%;
+      color: #fff;
+      font-family: system-ui, -apple-system, sans-serif;
+      position: relative;
+    }
+
+    #carrera-laguna-seca-3d .race-shell {
+      display: grid;
+      gap: 10px;
+    }
+
+    #carrera-laguna-seca-3d .race-stage {
+      width: 100%;
+      aspect-ratio: 1.55;
+      min-height: 360px;
+      max-height: 720px;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: #38bdf8;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    #carrera-laguna-seca-3d canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+    }
+
+    /* Viñeta de velocidad y efectos de pantalla */
+    #carrera-laguna-seca-3d .speed-vignette {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      box-shadow: inset 0 0 0px rgba(56, 189, 248, 0);
+      transition: box-shadow 0.2s ease;
+      z-index: 4;
+    }
+    #carrera-laguna-seca-3d .speed-vignette.active-turbo {
+      box-shadow: inset 0 0 80px rgba(56, 189, 248, 0.6);
+    }
+
+    /* HUD Flotante tipo Glassmorphism */
+    #carrera-laguna-seca-3d .hud-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
+      box-sizing: border-box;
+      z-index: 5;
+    }
+
+    #carrera-laguna-seca-3d .hud-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    /* Barra de Progreso del Circuito */
+    #carrera-laguna-seca-3d .circuit-progress-container {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #carrera-laguna-seca-3d .circuit-bar-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #carrera-laguna-seca-3d .circuit-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #38bdf8, #22c55e);
+      transition: width 0.1s linear;
+    }
+
+    #carrera-laguna-seca-3d .circuit-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-align: center;
+      color: #94a3b8;
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    /* Tarjetas de Datos HUD */
+    #carrera-laguna-seca-3d .hud-card {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      padding: 10px 16px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    #carrera-laguna-seca-3d .hud-card .title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #94a3b8;
+      margin-bottom: 2px;
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    #carrera-laguna-seca-3d .hud-card .value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #f8fafc;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Velocímetro Dinámico y Tacómetro */
+    #carrera-laguna-seca-3d .speedometer-card {
+      border-color: #6366f1;
+      background: rgba(30, 27, 75, 0.8);
+      min-width: 140px;
+    }
+
+    #carrera-laguna-seca-3d .speedometer-card .value {
+      color: #38bdf8;
+    }
+
+    #carrera-laguna-seca-3d .rpm-bar-container {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    #carrera-laguna-seca-3d .rpm-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: #22c55e;
+      transition: width 0.05s ease, background 0.2s ease;
+    }
+
+    /* Slot de Ítem Gráfico Dinámico */
+    #carrera-laguna-seca-3d .item-slot-card {
+      border-color: #eab308;
+      background: rgba(133, 77, 14, 0.5);
+      transition: transform 0.2s;
+    }
+    #carrera-laguna-seca-3d .item-slot-card.pulse {
+      transform: scale(1.08);
+    }
+
+    #carrera-laguna-seca-3d .item-slot-card .value {
+      color: #fef08a;
+      font-size: 1.1rem;
+    }
+
+    /* Botón de reinicio superior */
+    #carrera-laguna-seca-3d .hud-btn-reset {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8rem;
+      pointer-events: auto;
+      transition: background 0.2s;
+    }
+
+    #carrera-laguna-seca-3d .hud-btn-reset:hover {
+      background: rgba(30, 41, 59, 0.9);
+    }
+
+    /* Semáforo F1 e indicador central */
+    #carrera-laguna-seca-3d .f1-lights {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 2px solid #334155;
+      padding: 8px 16px;
+      border-radius: 30px;
+      display: flex;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #carrera-laguna-seca-3d .f1-light {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #222;
+      border: 2px solid #444;
+      transition: background 0.1s, box-shadow 0.1s;
+    }
+
+    #carrera-laguna-seca-3d .f1-light.red {
+      background: #ef4444;
+      box-shadow: 0 0 12px #ef4444;
+    }
+
+    #carrera-laguna-seca-3d .f1-light.green {
+      background: #22c55e;
+      box-shadow: 0 0 14px #22c55e;
+    }
+
+    #carrera-laguna-seca-3d .countdown-big {
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 5rem;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px #38bdf8;
+      z-index: 12;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    /* Pantalla de Meta / Victoria */
+    #carrera-laguna-seca-3d .victory-modal {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 20;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    #carrera-laguna-seca-3d .victory-modal.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #carrera-laguna-seca-3d .victory-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: #22c55e;
+      text-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+    }
+    #carrera-laguna-seca-3d .victory-stats {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      color: #cbd5e1;
+      text-align: center;
+      line-height: 1.6;
+    }
+    #carrera-laguna-seca-3d .victory-btn {
+      background: #38bdf8;
+      border: none;
+      color: #0f172a;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      padding: 12px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4);
+      transition: transform 0.1s, background 0.2s;
+    }
+    #carrera-laguna-seca-3d .victory-btn:hover {
+      background: #7dd3fc;
+      transform: scale(1.05);
+    }
+
+    #carrera-laguna-seca-3d .race-help {
+      color: var(--muted-foreground, #aaa);
+      font-size: 0.85rem;
+    }
+
+    #carrera-laguna-seca-3d .touch-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #carrera-laguna-seca-3d .touch-row button {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8rem;
+    }
+    #carrera-laguna-seca-3d .mobile-rotate { display:none; }
+    @media (max-width: 820px) and (orientation: landscape) {
+      #carrera-laguna-seca-3d { touch-action:none; }
+      #carrera-laguna-seca-3d .race-stage { min-height:100vh; max-height:none; aspect-ratio:auto; border-radius:0; }
+      #carrera-laguna-seca-3d .touch-row { position:fixed; left:10px; right:10px; bottom:10px; z-index:30; justify-content:space-between; flex-wrap:nowrap; pointer-events:none; }
+      #carrera-laguna-seca-3d .touch-row button { pointer-events:auto; min-width:68px; min-height:54px; padding:8px; font-size:.76rem; background:#102b40e8; border-color:#7dd3fc; }
+      #carrera-laguna-seca-3d .race-help { display:none; }
+    }
+    @media (max-width: 820px) and (orientation: portrait) {
+      #carrera-laguna-seca-3d .mobile-rotate { display:flex; position:fixed; inset:0; z-index:99; background:#061322f2; color:#fff; align-items:center; justify-content:center; text-align:center; padding:30px; font-family:'Orbitron',sans-serif; font-size:1.15rem; }
+    }
+
+    @media (max-width: 520px) {
+      #carrera-laguna-seca-3d .race-stage {
+        aspect-ratio: 1.03;
+        min-height: 380px;
+      }
+    }
+    #carrera-laguna-seca-3d .join-screen {
+      position:absolute; inset:0; z-index:20; display:grid; place-items:center;
+      background:linear-gradient(135deg,rgba(3,12,26,.92),rgba(9,43,66,.88));
+      padding:20px; box-sizing:border-box;
+    }
+    #carrera-laguna-seca-3d .join-screen.hidden { display:none; }
+    #carrera-laguna-seca-3d .join-card {
+      width:min(420px,100%); padding:28px; border:1px solid #38bdf8; border-radius:18px;
+      background:#081827; box-shadow:0 0 45px rgba(56,189,248,.26); text-align:center;
+    }
+    #carrera-laguna-seca-3d .join-card h2 { margin:8px 0; font-family:'Orbitron',sans-serif; }
+    #carrera-laguna-seca-3d .join-card p { color:#b9d8eb; }
+    #carrera-laguna-seca-3d .join-card input { width:100%; box-sizing:border-box; padding:14px; border-radius:9px; border:1px solid #49677f; background:#0e2638; color:#fff; font-size:1rem; text-align:center; }
+    #carrera-laguna-seca-3d .join-card button { width:100%; margin-top:12px; padding:14px; border:0; border-radius:9px; background:#22c55e; color:#05210f; font-family:'Orbitron',sans-serif; font-weight:900; cursor:pointer; }
+    #carrera-laguna-seca-3d .join-status { min-height:22px; margin-top:12px; color:#facc15; font-size:.86rem; }
+    #carrera-laguna-seca-3d .race-nav { display:flex; justify-content:flex-end; gap:8px; }
+    #carrera-laguna-seca-3d .race-nav a, #carrera-laguna-seca-3d .judge-actions button { padding:9px 12px; border-radius:8px; border:1px solid #3d6682; background:#102b40; color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
+    #carrera-laguna-seca-3d .judge-screen { position:absolute; inset:0; z-index:19; display:grid; place-items:center; background:rgba(3,12,26,.78); padding:20px; box-sizing:border-box; }
+    #carrera-laguna-seca-3d .judge-screen.hidden { display:none; }
+    #carrera-laguna-seca-3d .judge-card { width:min(460px,100%); padding:25px; border-radius:15px; border:1px solid #facc15; background:#0a1928; text-align:center; }
+    #carrera-laguna-seca-3d .judge-card input { width:100%; box-sizing:border-box; padding:12px; border-radius:8px; border:1px solid #506b80; background:#10283b; color:#fff; }
+    #carrera-laguna-seca-3d .judge-actions { display:grid; gap:10px; margin-top:16px; }
+    #carrera-laguna-seca-3d .judge-actions button:first-child { background:#22c55e; color:#05210f; border:0; }
+    #carrera-laguna-seca-3d .judge-actions button:last-child { background:#a32028; border:0; }
+    #carrera-laguna-seca-3d .live-label { position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:8; background:#091827dd; padding:8px 14px; border-radius:8px; border:1px solid #21e6c1; color:#d9fff6; font-family:'Orbitron',sans-serif; font-size:.8rem; }
+  </style>
+
+  <div class="race-shell">
+    <div class="mobile-rotate">↻<br><br>Gira el celular para jugar<br>en posición horizontal.</div>
+    <div class="race-nav">
+      <a href="carrera-laguna-seca-multijugador.html?modo=jugador">Jugador</a>
+      <a href="carrera-laguna-seca-multijugador.html?modo=juez">Juez</a>
+      <a href="carrera-laguna-seca-multijugador.html?modo=vivo" target="_blank">Videobeam</a>
+    </div>
+    <div class="race-stage" data-stage>
+      <div class="judge-screen hidden" data-judge-screen>
+        <div class="judge-card" data-judge-login>
+          <h2>Control del juez</h2><p>Ingresa la clave para controlar la salida.</p>
+          <input type="password" data-judge-password placeholder="Clave del juez" />
+          <div class="judge-actions"><button type="button" data-judge-login-btn>INGRESAR</button></div>
+          <div class="join-status" data-judge-message></div>
+        </div>
+        <div class="judge-card hidden" data-judge-control>
+          <h2>Control de carrera</h2><p data-judge-info>Esperando jugadores...</p>
+          <div class="judge-actions"><button type="button" data-judge-start>INICIAR SEMÁFORO</button><button type="button" data-judge-new>REINICIAR CARRERA</button><button type="button" data-judge-clear>VACIAR SALA</button></div>
+        </div>
+      </div>
+      <div class="live-label hidden" data-live-label>VIDEOBEAM · CLASIFICACIÓN EN VIVO</div>
+      <div class="join-screen" data-join-screen>
+        <div class="join-card">
+          <div style="font-size:2rem">♠</div>
+          <h2>BRASILIA BORDERLAND</h2>
+          <p>Ingresa tu nickname para ocupar un puesto en la parrilla. Hay 10 cupos.</p>
+          <input data-nickname maxlength="18" autocomplete="off" placeholder="Tu nickname" />
+          <button type="button" data-join>ENTRAR A LA CARRERA</button>
+          <div class="join-status" data-join-status>Conectando a la sala...</div>
+        </div>
+      </div>
+      <!-- Viñeta de Velocidad / Turbo -->
+      <div class="speed-vignette" data-vignette></div>
+
+      <!-- Barra de Progreso Lineal Superior -->
+      <div class="circuit-progress-container">
+        <span class="circuit-label">Progreso de Pista</span>
+        <div class="circuit-bar-track">
+          <div class="circuit-bar-fill" data-progress-bar></div>
+        </div>
+      </div>
+
+      <!-- Semáforo F1 -->
+      <div class="f1-lights" data-lights>
+        <div class="f1-light" data-light="0"></div>
+        <div class="f1-light" data-light="1"></div>
+        <div class="f1-light" data-light="2"></div>
+      </div>
+
+      <!-- Número de Cuenta Regresiva Gigante -->
+      <div class="countdown-big" data-countdown-text></div>
+
+      <!-- Pantalla de Meta / Resultados -->
+      <div class="victory-modal" data-victory-modal>
+        <div class="victory-title" data-victory-heading>¡CARRERA FINALIZADA!</div>
+        <div class="victory-stats" data-victory-stats>Clasificación General...</div>
+        <button class="victory-btn" type="button" data-victory-reset>Volver a Correr</button>
+      </div>
+
+      <!-- Interfaz HUD Flotante -->
+      <div class="hud-overlay">
+        <div class="hud-top-row">
+          <div class="hud-card speedometer-card">
+            <span class="title">Velocidad</span>
+            <span class="value"><strong data-speed>0</strong> <span style="font-size: 0.7rem;">km/h</span></span>
+            <div class="rpm-bar-container">
+              <div class="rpm-bar-fill" data-rpm-bar></div>
+            </div>
+          </div>
+
+          <button class="hud-btn-reset" type="button" data-reset>Reiniciar</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
+          <div style="display: flex; gap: 8px;">
+            <div class="hud-card">
+              <span class="title">Vuelta</span>
+              <span class="value"><strong data-lap>1/3</strong></span>
+            </div>
+            <div class="hud-card">
+              <span class="title">Posición</span>
+              <span class="value" style="color: #38bdf8;"><strong data-pos>1</strong><span style="font-size:0.7rem;">/10</span></span>
+            </div>
+            <div class="hud-card">
+              <span class="title">Tiempo</span>
+              <span class="value"><strong data-time>0.0</strong>s</span>
+            </div>
+          </div>
+
+          <div class="hud-card item-slot-card" data-item-card>
+            <span class="title">Ítem Activo</span>
+            <span class="value"><strong data-item>Vacío</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <canvas tabindex="0" role="img" aria-label="Juego de Carreras 3D Laguna Seca F1 con 10 Bólidos"></canvas>
+    </div>
+
+    <div class="touch-row" aria-label="Controles alternos">
+      <button class="btn" type="button" data-hold="left">◀<br>GIRAR</button>
+      <button class="btn" type="button" data-hold="up">▲<br>ACELERAR</button>
+      <button class="btn" type="button" data-hold="down">▼<br>FRENAR</button>
+      <button class="btn" type="button" data-hold="right">▶<br>GIRAR</button>
+      <button class="btn" type="button" data-use-item style="background: #d97706;">Usar Ítem (Espacio)</button>
+    </div>
+    <div class="race-help">
+      Usa las flechas del teclado o los botones táctiles. Presiona Barra Espaciadora para activar tu ítem. ¡Los rivales ahora respetan los límites de la pista!
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script>
+    (() => {
+      const root = document.getElementById('carrera-laguna-seca-3d');
+      const canvas = root.querySelector('canvas');
+      const stage = root.querySelector('[data-stage]');
+      const speedEl = root.querySelector('[data-speed]');
+      const rpmBarEl = root.querySelector('[data-rpm-bar]');
+      const circuitProgressBar = root.querySelector('[data-progress-bar]');
+      const lapEl = root.querySelector('[data-lap]');
+      const posEl = root.querySelector('[data-pos]');
+      const timeEl = root.querySelector('[data-time]');
+      const itemEl = root.querySelector('[data-item]');
+      const itemCardEl = root.querySelector('[data-item-card]');
+      const resetBtn = root.querySelector('[data-reset]');
+      const useItemBtn = root.querySelector('[data-use-item]');
+      const lightEls = root.querySelectorAll('[data-light]');
+      const countdownBigEl = root.querySelector('[data-countdown-text]');
+      const vignetteEl = root.querySelector('[data-vignette]');
+      const victoryModal = root.querySelector('[data-victory-modal]');
+      const victoryHeading = root.querySelector('[data-victory-heading]');
+      const victoryStats = root.querySelector('[data-victory-stats]');
+      const victoryResetBtn = root.querySelector('[data-victory-reset]');
+      const joinScreen = root.querySelector('[data-join-screen]');
+      const nicknameInput = root.querySelector('[data-nickname]');
+      const joinBtn = root.querySelector('[data-join]');
+      const joinStatus = root.querySelector('[data-join-status]');
+      const judgeScreen = root.querySelector('[data-judge-screen]');
+      const judgeLogin = root.querySelector('[data-judge-login]');
+      const judgeControl = root.querySelector('[data-judge-control]');
+      const judgePassword = root.querySelector('[data-judge-password]');
+      const judgeMessage = root.querySelector('[data-judge-message]');
+      const judgeInfo = root.querySelector('[data-judge-info]');
+      const judgeLoginBtn = root.querySelector('[data-judge-login-btn]');
+      const judgeStartBtn = root.querySelector('[data-judge-start]');
+      const judgeNewBtn = root.querySelector('[data-judge-new]');
+      const judgeClearBtn = root.querySelector('[data-judge-clear]');
+      const liveLabel = root.querySelector('[data-live-label]');
+      const keys = { up: false, down: false, left: false, right: false };
+
+      // Sala en tiempo real. Cambia ?sala=nombre para crear una carrera distinta.
+      const firebaseConfig = { apiKey:'AIzaSyCnM74qIoBtYY943dChQPYEclRSvUfDu1g', authDomain:'brasilia-borderland-en-vivo.firebaseapp.com', databaseURL:'https://brasilia-borderland-en-vivo-default-rtdb.firebaseio.com', projectId:'brasilia-borderland-en-vivo', appId:'1:1015529796864:web:e89639ee956921f15e2fe5' };
+      const roomId = new URLSearchParams(location.search).get('sala') || 'laguna-seca';
+      const mode = new URLSearchParams(location.search).get('modo') || 'jugador';
+      const isJudgeMode = mode === 'juez';
+      const isLiveMode = mode === 'vivo';
+      const carColors = [0xd97706,0x38bdf8,0xef4444,0x22c55e,0xa855f7,0xec4899,0xeab308,0x06b6d4,0xf97316,0x64748b];
+      let db, roomRef, currentUid = null, localSlot = null, localNickname = 'Jugador', registered = false, lastNetworkPush = 0;
+      const remoteCars = new Map();
+      let roomData = { players:{}, game:{phase:'lobby',cycle:0} }, judgeAuthorized = false, lastGameCycle = 0;
+
+      const world = { w: 15120, h: 9632 };
+      const roadWidth = 390;
+      const lapsToWin = 3;
+
+      const route = [
+        [0.38, 0.91], [0.54, 0.91], [0.68, 0.87], [0.83, 0.78],
+        [0.94, 0.66], [0.88, 0.54], [0.72, 0.65], [0.59, 0.76],
+        [0.48, 0.78], [0.43, 0.68], [0.40, 0.52], [0.47, 0.44],
+        [0.61, 0.35], [0.91, 0.29], [0.82, 0.07], [0.64, 0.05],
+        [0.48, 0.14], [0.36, 0.23], [0.25, 0.27], [0.21, 0.33],
+        [0.08, 0.43], [0.19, 0.58], [0.16, 0.68], [0.10, 0.78],
+        [0.08, 0.88], [0.18, 0.91], [0.28, 0.91]
+      ];
+
+      let curve;
+      let trackPoints = [];
+      let totalLength = 1;
+      let player;
+      let bots = [];
+      let allCars = [];
+      let running = false;
+      let countdownStart = performance.now();
+      let lastBeepStep = -1;
+      let raceTime = 0;
+      let last = performance.now();
+
+      let scene, camera, renderer;
+      let boxes = [];
+      let bullets = [];
+
+      let audioCtx = null;
+      let playerEngineOsc1 = null, playerEngineOsc2 = null, playerEngineGain = null, playerEngineFilter = null;
+      let engineStarted = false;
+
+      function remoteColor(slot) { return carColors[(Math.max(1,slot||1)-1)%carColors.length]; }
+
+      async function connectToRoom() {
+        try {
+          if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+          await firebase.auth().signInAnonymously();
+          currentUid = firebase.auth().currentUser.uid;
+          db = firebase.database();
+          roomRef = db.ref(`carrerasLagunaSeca/${roomId}`);
+          roomRef.on('value', snapshot => applyRoom(snapshot.val() || { players:{}, game:{phase:'lobby',cycle:0} }));
+          if (!isJudgeMode && !isLiveMode) joinStatus.textContent = 'Sala lista. Elige tu nickname.';
+          joinBtn.disabled = false;
+        } catch (error) {
+          joinStatus.textContent = 'No fue posible conectar. Revisa internet e inténtalo de nuevo.';
+          console.error(error);
+        }
+      }
+
+      function applyRoom(data) {
+        roomData = data || { players:{}, game:{phase:'lobby',cycle:0} };
+        roomData.players = roomData.players || {}; roomData.game = roomData.game || {phase:'lobby',cycle:0};
+        roomData.game.cycle = Number(roomData.game.cycle) || 0;
+        syncRemotePlayers(roomData.players);
+        if (registered && currentUid && !roomData.players[currentUid] && !isJudgeMode) {
+          registered=false; localSlot=null; joinScreen.classList.remove('hidden'); joinStatus.textContent='El juez reinició la sala. Registra tu nickname de nuevo.';
+        }
+        if (registered && roomData.game.cycle !== lastGameCycle) { lastGameCycle=roomData.game.cycle||0; resetRace(); }
+        if (isJudgeMode && judgeAuthorized) renderJudge();
+      }
+
+      function renderJudge() {
+        const count = Object.keys(roomData.players || {}).length;
+        const phase = roomData.game?.phase || 'lobby';
+        judgeInfo.textContent = `${count}/10 jugadores conectados · ${phase === 'lobby' ? 'Esperando salida' : phase === 'countdown' ? 'Semáforo en marcha' : 'Carrera en curso'}`;
+        judgeStartBtn.disabled = count === 0 || phase !== 'lobby';
+      }
+
+      function enterJudge() {
+        if (judgePassword.value !== '136101521') { judgeMessage.textContent='Clave incorrecta.'; return; }
+        judgeAuthorized=true; judgeLogin.classList.add('hidden'); judgeControl.classList.remove('hidden'); renderJudge();
+      }
+
+      async function judgeStart() {
+        if (!judgeAuthorized || !roomRef) return;
+        await roomRef.transaction(room => { room=room||{}; room.players=room.players||{}; room.game=room.game||{cycle:0}; if (!Object.keys(room.players).length || room.game.phase==='countdown') return; room.game={...room.game,phase:'countdown',startAt:Date.now()+3500}; return room; });
+      }
+
+      async function judgeNewRace() {
+        if (!judgeAuthorized || !roomRef) return;
+        await roomRef.transaction(room => { room=room||{}; room.players=room.players||{}; room.game={phase:'lobby',cycle:(room.game?.cycle||0)+1}; return room; });
+      }
+
+      async function judgeClearRoom() {
+        if (!judgeAuthorized || !roomRef || !confirm('¿Vaciar la sala y borrar los 10 cupos?')) return;
+        await roomRef.set({ players:{}, game:{phase:'lobby',cycle:(roomData.game?.cycle||0)+1} });
+      }
+
+      async function joinRace() {
+        const nickname = nicknameInput.value.trim().replace(/\s+/g,' ').slice(0,18);
+        if (!nickname) { joinStatus.textContent = 'Escribe un nickname para entrar.'; nicknameInput.focus(); return; }
+        if (!roomRef || !currentUid) { joinStatus.textContent = 'Aún estamos conectando a la sala...'; return; }
+        joinBtn.disabled = true; joinStatus.textContent = 'Reservando tu posición...';
+        try {
+          const result = await roomRef.transaction(room => {
+            room = room || { players:{} };
+            room.players = room.players || {};
+            if (room.game && room.game.phase && room.game.phase !== 'lobby') return;
+            if (room.players[currentUid]) return room;
+            const occupied = new Set(Object.values(room.players).map(player => player.slot));
+            let slot = 1; while (occupied.has(slot) && slot <= 10) slot += 1;
+            if (slot > 10) return;
+            room.players[currentUid] = { nickname, slot, joinedAt:firebase.database.ServerValue.TIMESTAMP };
+            return room;
+          });
+          const room = result.snapshot.val();
+          const mine = room && room.players && room.players[currentUid];
+          if (!result.committed || !mine) { joinStatus.textContent = room?.game?.phase && room.game.phase !== 'lobby' ? 'La carrera ya está en curso. Espera la siguiente salida.' : 'La parrilla ya tiene 10 jugadores.'; joinBtn.disabled=false; return; }
+          localSlot = mine.slot; localNickname = nickname; registered = true;
+          player.slot = localSlot;
+          db.ref(`carrerasLagunaSeca/${roomId}/players/${currentUid}`).onDisconnect().remove();
+          joinScreen.classList.add('hidden');
+          resetRace();
+        } catch (error) {
+          joinStatus.textContent = 'No se pudo reservar el puesto. Intenta nuevamente.'; joinBtn.disabled=false; console.error(error);
+        }
+      }
+
+      function syncRemotePlayers(playersData) {
+        if (!scene || !currentUid) return;
+        const present = new Set();
+        Object.entries(playersData).forEach(([uid,data]) => {
+          if (uid === currentUid) return;
+          present.add(uid);
+          let car = remoteCars.get(uid);
+          if (!car) {
+            const model = createCarModel(remoteColor(data.slot));
+            car = { uid, name:data.nickname||'Jugador', slot:data.slot||10, isRemote:true, meshGroup:model.group, mainBody:model.mainBody, x:Number(data.x)||0,z:Number(data.z)||0,angle:Number(data.angle)||0,progress:0,lap:1,finished:false, targetX:Number(data.x)||0,targetZ:Number(data.z)||0,targetAngle:Number(data.angle)||0 };
+            remoteCars.set(uid,car); allCars.push(car);
+          }
+          car.name=data.nickname||car.name; car.slot=data.slot||car.slot;
+          car.targetX=Number(data.x)||0; car.targetZ=Number(data.z)||0; car.targetAngle=Number(data.angle)||0;
+          car.progress=Number(data.progress)||0; car.lap=Number(data.lap)||1; car.finished=!!data.finished;
+        });
+        remoteCars.forEach((car,uid) => {
+          if (!present.has(uid)) { scene.remove(car.meshGroup); remoteCars.delete(uid); allCars=allCars.filter(item=>item!==car); }
+        });
+      }
+
+      function updateRemoteCars(dt) {
+        remoteCars.forEach(car => {
+          car.x += (car.targetX-car.x)*Math.min(1,dt*12);
+          car.z += (car.targetZ-car.z)*Math.min(1,dt*12);
+          let delta=car.targetAngle-car.angle; while(delta>Math.PI)delta-=Math.PI*2; while(delta<-Math.PI)delta+=Math.PI*2;
+          car.angle += delta*Math.min(1,dt*12);
+          car.meshGroup.position.set(car.x,0,car.z); car.meshGroup.rotation.y=-car.angle+Math.PI/2;
+        });
+      }
+
+      function publishLocalPlayer(now) {
+        if (!registered || !db || !player || now-lastNetworkPush<90) return;
+        lastNetworkPush=now;
+        db.ref(`carrerasLagunaSeca/${roomId}/players/${currentUid}`).update({ nickname:player.name, slot:localSlot, x:player.x, z:player.z, angle:player.angle, progress:player.progress, lap:player.lap, finished:player.finished, updatedAt:firebase.database.ServerValue.TIMESTAMP });
+      }
+
+      function initAudio() {
+        if (audioCtx) return;
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+          playerEngineOsc1 = audioCtx.createOscillator();
+          playerEngineOsc1.type = 'sawtooth';
+          playerEngineOsc1.frequency.setValueAtTime(60, audioCtx.currentTime);
+
+          playerEngineOsc2 = audioCtx.createOscillator();
+          playerEngineOsc2.type = 'sawtooth';
+          playerEngineOsc2.frequency.setValueAtTime(120, audioCtx.currentTime);
+
+          playerEngineFilter = audioCtx.createBiquadFilter();
+          playerEngineFilter.type = 'lowpass';
+          playerEngineFilter.frequency.setValueAtTime(400, audioCtx.currentTime);
+
+          playerEngineGain = audioCtx.createGain();
+          playerEngineGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+
+          playerEngineOsc1.connect(playerEngineFilter);
+          playerEngineOsc2.connect(playerEngineFilter);
+          playerEngineFilter.connect(playerEngineGain);
+          playerEngineGain.connect(audioCtx.destination);
+
+          playerEngineOsc1.start();
+          playerEngineOsc2.start();
+          engineStarted = true;
+        } catch (e) {}
+      }
+
+      function playBeep(freq, duration) {
+        initAudio();
+        if (!audioCtx) return;
+        try {
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        } catch (e) {}
+      }
+
+      function speakVoice(text) {
+        initAudio();
+        if (!audioCtx) return;
+        try {
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(250, now);
+          osc.frequency.exponentialRampToValueAtTime(120, now + 0.4);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.4);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(now + 0.4);
+        } catch (e) {}
+      }
+
+      function playSoundEffect(type) {
+        initAudio();
+        if (!audioCtx) return;
+        try {
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          if (type === 'turbo') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 1.2);
+            gain.gain.setValueAtTime(0.4, now);
+            gain.gain.linearRampToValueAtTime(0, now + 1.2);
+            osc.start(); osc.stop(now + 1.2);
+          } else if (type === 'shoot') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.15);
+            osc.start(); osc.stop(now + 0.15);
+          } else if (type === 'box') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.linearRampToValueAtTime(800, now + 0.2);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.2);
+            osc.start(); osc.stop(now + 0.2);
+          } else if (type === 'skid') {
+            const bufferSize = audioCtx.sampleRate * 0.25;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1800;
+            filter.Q.value = 4.0;
+
+            const nGain = audioCtx.createGain();
+            nGain.gain.setValueAtTime(0.2, now);
+            nGain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+
+            noise.connect(filter);
+            filter.connect(nGain);
+            nGain.connect(audioCtx.destination);
+            noise.start(now);
+          }
+        } catch (e) {}
+      }
+
+      function updateEngineSound(speed, throttle) {
+        initAudio();
+        if (!engineStarted || !audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const normSpeed = Math.min(2.0, speed / 5000);
+        const rpmFreq = 65 + (normSpeed * 500) + (throttle * 100);
+        const now = audioCtx.currentTime;
+
+        playerEngineOsc1.frequency.setTargetAtTime(rpmFreq, now, 0.08);
+        playerEngineOsc2.frequency.setTargetAtTime(rpmFreq * 1.5, now, 0.08);
+        playerEngineFilter.frequency.setTargetAtTime(300 + (rpmFreq * 3.5), now, 0.08);
+
+        const targetVol = running && !player.finished ? 0.04 + (throttle * 0.08) + (normSpeed * 0.04) : 0.02;
+        playerEngineGain.gain.setTargetAtTime(targetVol, now, 0.1);
+      }
+
+      function buildTrackCurve() {
+        const points = route.map(p => new THREE.Vector3(p[0] * world.w, 0, p[1] * world.h));
+        curve = new THREE.CatmullRomCurve3(points, true, 'centripetal', 0.5);
+        
+        const numSamples = 1600;
+        trackPoints = [];
+        totalLength = curve.getLength();
+
+        for (let i = 0; i <= numSamples; i++) {
+          const t = i / numSamples;
+          const pos = curve.getPointAt(t);
+          const tangent = curve.getTangentAt(t).normalize();
+          const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+          trackPoints.push({
+            pos,
+            tangent,
+            normal,
+            progress: t * totalLength,
+            angle: Math.atan2(tangent.z, tangent.x)
+          });
+        }
+
+        smoothEdgeOffsets();
+      }
+
+      function smoothEdgeOffsets() {
+        const halfW = roadWidth / 2;
+        for (let i = 0; i < trackPoints.length; i++) {
+          const pt = trackPoints[i];
+          pt.leftPos = pt.pos.clone().addScaledVector(pt.normal, -halfW);
+          pt.rightPos = pt.pos.clone().addScaledVector(pt.normal, halfW);
+        }
+
+        const numPts = trackPoints.length;
+        for (let pass = 0; pass < 3; pass++) {
+          for (let i = 0; i < numPts; i++) {
+            const prev = trackPoints[(i - 1 + numPts) % numPts];
+            const curr = trackPoints[i];
+            const next = trackPoints[(i + 1) % numPts];
+
+            const maxStep = 50;
+            ['leftPos', 'rightPos'].forEach(side => {
+              const dPrev = curr[side].distanceTo(prev[side]);
+              if (dPrev > maxStep * 3) {
+                curr[side].lerpVectors(prev[side], next[side], 0.5);
+              }
+            });
+          }
+        }
+      }
+
+      function getPointAtProgress(progress) {
+        const normProgress = ((progress % totalLength) + totalLength) % totalLength;
+        const t = normProgress / totalLength;
+        const pos = curve.getPointAt(t);
+        const tangent = curve.getTangentAt(t).normalize();
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+        return { pos, tangent, normal, angle: Math.atan2(tangent.z, tangent.x) };
+      }
+
+      function nearestOnTrack(x, z) {
+        let best = null;
+        const step = 2;
+        for (let i = 0; i < trackPoints.length - 1; i += step) {
+          const p1 = trackPoints[i].pos;
+          const p2 = trackPoints[Math.min(i + step, trackPoints.length - 1)].pos;
+          
+          const dx = p2.x - p1.x;
+          const dz = p2.z - p1.z;
+          const lenSq = dx * dx + dz * dz;
+
+          let t = lenSq === 0 ? 0 : ((x - p1.x) * dx + (z - p1.z) * dz) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+
+          const px = p1.x + t * dx;
+          const pz = p1.z + t * dz;
+          const dist = Math.hypot(x - px, z - pz);
+
+          if (!best || dist < best.d) {
+            const nx = dist ? (x - px) / dist : 0;
+            const nz = dist ? (z - pz) / dist : 0;
+            const segProgress = trackPoints[i].progress + t * Math.sqrt(lenSq);
+            best = { x: px, z: pz, d: dist, nx, nz, progress: segProgress };
+          }
+        }
+        return best;
+      }
+
+      function createFinishLineTexture() {
+        const canvasTex = document.createElement('canvas');
+        canvasTex.width = 128; canvasTex.height = 32;
+        const ctx = canvasTex.getContext('2d');
+        const rows = 2, cols = 8;
+        const w = canvasTex.width / cols, h = canvasTex.height / rows;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#000000';
+            ctx.fillRect(c * w, r * h, w, h);
+          }
+        }
+        const texture = new THREE.CanvasTexture(canvasTex);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        return texture;
+      }
+
+      function init3D() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x38bdf8);
+        scene.fog = new THREE.FogExp2(0x38bdf8, 0.00008);
+
+        const aspect = stage.clientWidth / stage.clientHeight;
+        camera = new THREE.PerspectiveCamera(60, aspect, 1, 60000);
+
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfffaed, 1.2);
+        dirLight.position.set(7000, 12000, 7000);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const groundGeo = new THREE.PlaneGeometry(world.w * 3, world.h * 3);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x15803d });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(world.w / 2, -2, world.h / 2);
+        scene.add(ground);
+
+        build3DMeshTrack();
+        buildCenterLine();
+        buildFinishLine();
+        buildClouds();
+        buildTrees();
+        buildItemBoxes();
+      }
+
+      function createCarModel(colorHex) {
+        const group = new THREE.Group();
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.2, metalness: 0.3 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+        const tireMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8, roughness: 0.2 });
+        const helmetMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.1 });
+
+        const mainBody = new THREE.Mesh(new THREE.BoxGeometry(14, 10, 48), bodyMat);
+        mainBody.position.set(0, 7, 2);
+        mainBody.castShadow = true;
+        group.add(mainBody);
+
+        const noseGeo = new THREE.ConeGeometry(7, 28, 4);
+        noseGeo.rotateX(Math.PI / 2);
+        noseGeo.rotateY(Math.PI / 4);
+        const nose = new THREE.Mesh(noseGeo, bodyMat);
+        nose.position.set(0, 5.5, 34);
+        nose.scale.set(1, 0.6, 1);
+        group.add(nose);
+
+        [-1, 1].forEach(side => {
+          const sidepod = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 26), bodyMat);
+          sidepod.position.set(side * 11, 6, -2);
+          sidepod.castShadow = true;
+          group.add(sidepod);
+        });
+
+        const cockpit = new THREE.Mesh(new THREE.BoxGeometry(10, 4, 16), darkMat);
+        cockpit.position.set(0, 11, 2);
+        group.add(cockpit);
+
+        const helmet = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 16), helmetMat);
+        helmet.position.set(0, 13.5, 2);
+        group.add(helmet);
+
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(5, 0.8, 8, 16, Math.PI), darkMat);
+        halo.rotateX(Math.PI / 2);
+        halo.position.set(0, 13.5, 5);
+        group.add(halo);
+
+        const frontWingMain = new THREE.Mesh(new THREE.BoxGeometry(44, 1.5, 10), wingMat);
+        frontWingMain.position.set(0, 3, 44);
+        group.add(frontWingMain);
+
+        [-1, 1].forEach(side => {
+          const endplate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 6, 12), wingMat);
+          endplate.position.set(side * 22, 5, 44);
+          group.add(endplate);
+        });
+
+        const rearWingMain = new THREE.Mesh(new THREE.BoxGeometry(32, 2, 10), wingMat);
+        rearWingMain.position.set(0, 18, -26);
+        rearWingMain.castShadow = true;
+        group.add(rearWingMain);
+
+        [-1, 1].forEach(side => {
+          const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 14, 10), wingMat);
+          pillar.position.set(side * 15, 11, -26);
+          group.add(pillar);
+        });
+
+        const wheelGeo = new THREE.CylinderGeometry(7.5, 7.5, 7, 24);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const rimGeo = new THREE.CylinderGeometry(4.5, 4.5, 7.2, 16);
+        rimGeo.rotateZ(Math.PI / 2);
+
+        [[-18, 7.5, 26], [18, 7.5, 26], [-19, 8.0, -22], [19, 8.0, -22]].forEach((pos, idx) => {
+          const wheelGroup = new THREE.Group();
+          const tire = new THREE.Mesh(wheelGeo, tireMat);
+          tire.castShadow = true;
+          const rim = new THREE.Mesh(rimGeo, rimMat);
+          if (idx >= 2) wheelGroup.scale.set(1.15, 1.15, 1.2);
+          wheelGroup.add(tire);
+          wheelGroup.add(rim);
+          wheelGroup.position.set(...pos);
+          group.add(wheelGroup);
+        });
+
+        scene.add(group);
+        return { group, mainBody };
+      }
+
+      function buildTrees() {
+        const treeGroup = new THREE.Group();
+        const trunkGeo = new THREE.CylinderGeometry(9, 14, 45, 8);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+        const foliageGeo = new THREE.ConeGeometry(60, 130, 8);
+        const foliageMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.6, flatShading: true });
+
+        for (let i = 0; i < trackPoints.length; i += 10) {
+          const pt = trackPoints[i];
+          const distOut = roadWidth * (0.75 + Math.random() * 1.5);
+          
+          [-1, 1].forEach(side => {
+            if (Math.random() > 0.25) {
+              const tree = new THREE.Group();
+              const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+              trunk.position.y = 22.5;
+              tree.add(trunk);
+              const foliage = new THREE.Mesh(foliageGeo, foliageMat);
+              foliage.position.y = 85;
+              tree.add(foliage);
+
+              const px = pt.pos.x + pt.normal.x * distOut * side + (Math.random() - 0.5) * 80;
+              const pz = pt.pos.z + pt.normal.z * distOut * side + (Math.random() - 0.5) * 80;
+              tree.position.set(px, 0, pz);
+              const scale = 0.8 + Math.random() * 0.7;
+              tree.scale.set(scale, scale, scale);
+              treeGroup.add(tree);
+            }
+          });
+        }
+        scene.add(treeGroup);
+      }
+
+      function buildItemBoxes() {
+        const boxGeo = new THREE.BoxGeometry(34, 34, 34);
+        const boxMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.5 });
+
+        for (let p = 0.06; p < 0.96; p += 0.09) {
+          const pt = getPointAtProgress(totalLength * p);
+          [-0.28, 0, 0.28].forEach(offsetRatio => {
+            const mesh = new THREE.Mesh(boxGeo, boxMat);
+            const pos = pt.pos.clone().addScaledVector(pt.normal, roadWidth * offsetRatio);
+            mesh.position.set(pos.x, 24, pos.z);
+            scene.add(mesh);
+            boxes.push({ mesh, active: true, respawnTimer: 0, x: pos.x, z: pos.z });
+          });
+        }
+      }
+
+      function buildClouds() {
+        const cloudGroup = new THREE.Group();
+        const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, flatShading: true, transparent: true, opacity: 0.9 });
+        const cloudGeo = new THREE.DodecahedronGeometry(140, 1);
+
+        for (let c = 0; c < 45; c++) {
+          const cluster = new THREE.Group();
+          const numSpheres = 5 + Math.floor(Math.random() * 6);
+          for (let s = 0; s < numSpheres; s++) {
+            const part = new THREE.Mesh(cloudGeo, cloudMat);
+            part.position.set((Math.random() - 0.5) * 260, (Math.random() - 0.5) * 70, (Math.random() - 0.5) * 200);
+            const scale = 0.8 + Math.random() * 1.3;
+            part.scale.set(scale, scale * 0.7, scale);
+            cluster.add(part);
+          }
+          cluster.position.set((Math.random() - 0.5) * world.w * 2.2, 1400 + Math.random() * 900, (Math.random() - 0.5) * world.h * 2.2);
+          cloudGroup.add(cluster);
+        }
+        scene.add(cloudGroup);
+      }
+
+      function buildFinishLine() {
+        const startPt = trackPoints[0];
+        const finishGeo = new THREE.PlaneGeometry(roadWidth, 70);
+        const finishMat = new THREE.MeshBasicMaterial({ map: createFinishLineTexture(), side: THREE.DoubleSide });
+        const finishMesh = new THREE.Mesh(finishGeo, finishMat);
+        finishMesh.rotation.x = -Math.PI / 2;
+        finishMesh.rotation.z = -startPt.angle + Math.PI / 2;
+        finishMesh.position.set(startPt.pos.x, 0.8, startPt.pos.z);
+        scene.add(finishMesh);
+      }
+
+      function buildCenterLine() {
+        const lineGeo = new THREE.PlaneGeometry(9, 60);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        const step = 8;
+        for (let i = 0; i < trackPoints.length; i += step) {
+          const pt = trackPoints[i];
+          const mesh = new THREE.Mesh(lineGeo, lineMat);
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.rotation.z = -pt.angle + Math.PI / 2;
+          mesh.position.set(pt.pos.x, 0.5, pt.pos.z);
+          scene.add(mesh);
+        }
+      }
+
+      function build3DMeshTrack() {
+        const roadVertices = [];
+        const roadIndices = [];
+
+        for (let i = 0; i < trackPoints.length; i++) {
+          const pt = trackPoints[i];
+          roadVertices.push(pt.leftPos.x, 0, pt.leftPos.z);
+          roadVertices.push(pt.rightPos.x, 0, pt.rightPos.z);
+
+          if (i < trackPoints.length - 1) {
+            const base = i * 2;
+            roadIndices.push(base, base + 1, base + 2);
+            roadIndices.push(base + 1, base + 3, base + 2);
+          }
+        }
+
+        const roadGeo = new THREE.BufferGeometry();
+        roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(roadVertices, 3));
+        roadGeo.setIndex(roadIndices);
+        roadGeo.computeVertexNormals();
+
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+        scene.add(new THREE.Mesh(roadGeo, roadMat));
+
+        buildCleanWall('leftPos', 0xef4444);
+        buildCleanWall('rightPos', 0xef4444);
+      }
+
+      function buildCleanWall(sideKey, colorHex) {
+        const vertices = [];
+        const indices = [];
+
+        for (let i = 0; i < trackPoints.length; i++) {
+          const pos = trackPoints[i][sideKey];
+          vertices.push(pos.x, 0, pos.z);
+          vertices.push(pos.x, 24, pos.z);
+
+          if (i < trackPoints.length - 1) {
+            const idx = i * 2;
+            indices.push(idx, idx + 1, idx + 2);
+            indices.push(idx + 1, idx + 3, idx + 2);
+          }
+        }
+
+        const wallGeo = new THREE.BufferGeometry();
+        wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        wallGeo.setIndex(indices);
+        wallGeo.computeVertexNormals();
+
+        const wallMat = new THREE.MeshStandardMaterial({ color: colorHex, side: THREE.DoubleSide, roughness: 0.4 });
+        scene.add(new THREE.Mesh(wallGeo, wallMat));
+      }
+
+      function triggerItem() {
+        if (!player || !player.item || player.itemCharges <= 0) return;
+
+        if (player.item === 'turbo') {
+          player.turboTimer = 3.5;
+          const forwardX = Math.cos(player.angle);
+          const forwardZ = Math.sin(player.angle);
+          player.vx += forwardX * 2500;
+          player.vz += forwardZ * 2500;
+          playSoundEffect('turbo');
+        } else if (player.item === 'shoot') {
+          fireBullet();
+          playSoundEffect('shoot');
+        }
+
+        player.itemCharges -= 1;
+        if (player.itemCharges <= 0) {
+          player.item = null;
+        }
+      }
+
+      function fireBullet() {
+        const bulletGeo = new THREE.SphereGeometry(11, 12, 12);
+        const bulletMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+        const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+
+        const spawnDist = 45;
+        const bx = player.x + Math.cos(player.angle) * spawnDist;
+        const bz = player.z + Math.sin(player.angle) * spawnDist;
+
+        mesh.position.set(bx, 12, bz);
+        scene.add(mesh);
+
+        const bSpeed = 6500;
+        bullets.push({
+          mesh,
+          vx: Math.cos(player.angle) * bSpeed,
+          vz: Math.sin(player.angle) * bSpeed,
+          life: 2.8
+        });
+      }
+
+      function resetRace() {
+        allCars.forEach(c => scene.remove(c.meshGroup));
+        allCars = [];
+        bullets.forEach(b => scene.remove(b.mesh));
+        bullets = [];
+
+        // Solo se dibujan participantes conectados: no hay bots en esta versión.
+        bots = [];
+        remoteCars.clear();
+        const playerObj = createCarModel(remoteColor(localSlot || 1));
+        player = {
+          name: localNickname, isBot: false, slot: localSlot || 1,
+          meshGroup: playerObj.group, mainBody: playerObj.mainBody,
+          x: 0, z: 0, vx: 0, vz: 0, angle: 0,
+          progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false,
+          item: null, itemCharges: 0, turboTimer: 0, maxSpeed: 5300
+        };
+        if (isLiveMode) player.meshGroup.visible = false;
+        else allCars.push(player);
+
+        // El orden de llegada a la sala define el lugar en la parrilla.
+        const gridSpacing = 450;
+        const gridIndex = Math.max(0, (localSlot || 1) - 1);
+        const gridProgress = (totalLength - gridIndex * gridSpacing) % totalLength;
+        const gridPt = getPointAtProgress(gridProgress);
+        const laneOffset = gridIndex % 2 === 0 ? -75 : 75;
+        player.x = gridPt.pos.x + gridPt.normal.x * laneOffset;
+        player.z = gridPt.pos.z + gridPt.normal.z * laneOffset;
+        player.angle = gridPt.angle;
+        player.progress = gridProgress;
+        player.previousProgress = gridProgress;
+
+        raceTime = 0;
+        running = false;
+        lastBeepStep = -1;
+        countdownStart = performance.now();
+        last = performance.now();
+        victoryModal.classList.remove('show');
+        if (roomRef) roomRef.child('players').once('value').then(snapshot => syncRemotePlayers(snapshot.val() || {}));
+      }
+
+      function updateCountdown(now) {
+        if ((!registered && !isLiveMode) || isJudgeMode) { running = false; countdownBigEl.textContent = ''; return; }
+        const game = roomData.game || {phase:'lobby'};
+        if (game.phase !== 'countdown' || !game.startAt) {
+          running = false; lightEls.forEach(el => el.className = 'f1-light');
+          countdownBigEl.textContent = isLiveMode ? 'ESPERANDO AL JUEZ' : 'ESPERA AL JUEZ';
+          return;
+        }
+        const elapsed = 3.5 - Math.max(0, (game.startAt - Date.now()) / 1000);
+        lightEls.forEach(el => el.className = 'f1-light');
+
+        if (elapsed < 1) {
+          if (lastBeepStep !== 0) { playBeep(440, 0.15); lastBeepStep = 0; }
+          lightEls[0].classList.add('red');
+          countdownBigEl.textContent = "3";
+        } else if (elapsed < 2) {
+          if (lastBeepStep !== 1) { playBeep(440, 0.15); lastBeepStep = 1; }
+          lightEls[0].classList.add('red'); lightEls[1].classList.add('red');
+          countdownBigEl.textContent = "2";
+        } else if (elapsed < 3) {
+          if (lastBeepStep !== 2) { playBeep(440, 0.15); lastBeepStep = 2; }
+          lightEls[0].classList.add('red'); lightEls[1].classList.add('red'); lightEls[2].classList.add('red');
+          countdownBigEl.textContent = "1";
+        } else if (Date.now() < game.startAt + 1200) {
+          if (lastBeepStep !== 3) { 
+            playBeep(880, 0.6); 
+            speakVoice("Go!");
+            lastBeepStep = 3; 
+          }
+          lightEls.forEach(el => el.classList.add('green'));
+          countdownBigEl.textContent = "¡YA!";
+          running = true;
+        } else {
+          countdownBigEl.textContent = "";
+          running = true;
+        }
+      }
+
+      function updateItemsAndBullets(dt) {
+        boxes.forEach(b => {
+          if (b.active) {
+            b.mesh.rotation.y += 1.8 * dt;
+            b.mesh.position.y = 24 + Math.sin(performance.now() * 0.004) * 4;
+
+            const dist = Math.hypot(player.x - b.x, player.z - b.z);
+            if (dist < 65 && !player.item) {
+              b.active = false;
+              b.mesh.visible = false;
+              b.respawnTimer = 4;
+
+              player.item = Math.random() > 0.5 ? 'turbo' : 'shoot';
+              player.itemCharges = 3;
+              playSoundEffect('box');
+
+              itemCardEl.classList.add('pulse');
+              setTimeout(() => itemCardEl.classList.remove('pulse'), 300);
+            }
+          } else {
+            b.respawnTimer -= dt;
+            if (b.respawnTimer <= 0) {
+              b.active = true;
+              b.mesh.visible = true;
+            }
+          }
+        });
+
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const b = bullets[i];
+          b.mesh.position.x += b.vx * dt;
+          b.mesh.position.z += b.vz * dt;
+          b.life -= dt;
+
+          let hit = false;
+          for (let bot of bots) {
+            if (!bot.finished && Math.hypot(b.mesh.position.x - bot.x, b.mesh.position.z - bot.z) < 52) {
+              // El disparo detiene por completo al bot durante un segundo.
+              // Como los bots avanzan por raceDistance, frenar vx/vz no tendría efecto.
+              bot.stunTimer = 1.0;
+              bot.currentSpeed = 0;
+              bot.hitFlash = 1.0;
+              hit = true;
+              break;
+            }
+          }
+
+          if (b.life <= 0 || hit) {
+            scene.remove(b.mesh);
+            bullets.splice(i, 1);
+          }
+        }
+      }
+
+      // Modificación aplicada: Si choca con otro se pierde velocidad, si me golpean de atrás gano impulso[cite: 1]
+      const liveImpactCooldown = new Map();
+      function checkLiveCollisions(now) {
+        if (!registered || !running) return;
+        const forwardX = Math.cos(player.angle), forwardZ = Math.sin(player.angle);
+        remoteCars.forEach((car, uid) => {
+          const dx = car.x - player.x, dz = car.z - player.z;
+          const distance = Math.hypot(dx, dz);
+          if (distance > 78 || now - (liveImpactCooldown.get(uid) || 0) < 380) return;
+          liveImpactCooldown.set(uid, now);
+          
+          const isAhead = dx * forwardX + dz * forwardZ > 0;
+          if (isAhead) {
+            // Choca con otro vehículo: se pierde velocidad[cite: 1]
+            player.vx *= 0.65;
+            player.vz *= 0.65;
+            player.x -= forwardX * 16;
+            player.z -= forwardZ * 16;
+          } else {
+            // Te golpean de atrás: ganas un pequeño impulso[cite: 1]
+            player.vx += forwardX * 850;
+            player.vz += forwardZ * 850;
+            const speed = Math.hypot(player.vx, player.vz);
+            const limit = (player.turboTimer > 0 ? 6800 : player.maxSpeed) * 1.35;
+            if (speed > limit) {
+              player.vx = (player.vx / speed) * limit;
+              player.vz = (player.vz / speed) * limit;
+            }
+            player.x += forwardX * 16;
+            player.z += forwardZ * 16;
+          }
+          player.hitFlash = 0.15;
+          playSoundEffect('skid');
+        });
+      }
+
+      function updateBots(dt) {
+        bots.forEach((bot, botIndex) => {
+          if (bot.finished) return;
+
+          if (running) {
+            // Medimos la intensidad de la curva comparando dos tangentes próximas.
+            // Cuanto mayor sea el giro, más reduce velocidad el bot.
+            const wrappedProgress = ((bot.raceDistance % totalLength) + totalLength) % totalLength;
+            const sampleHere = getPointAtProgress(wrappedProgress);
+            const sampleAhead = getPointAtProgress(wrappedProgress + 360);
+
+            let tangentDiff = Math.atan2(
+              sampleHere.tangent.x * sampleAhead.tangent.z - sampleHere.tangent.z * sampleAhead.tangent.x,
+              sampleHere.tangent.x * sampleAhead.tangent.x + sampleHere.tangent.z * sampleAhead.tangent.z
+            );
+            tangentDiff = Math.abs(tangentDiff);
+
+            const curveFactor = THREE.MathUtils.clamp(tangentDiff / 0.75, 0, 1);
+            const desiredSpeed = bot.cruiseSpeed * (1 - curveFactor * 0.32);
+
+            if (bot.stunTimer > 0) {
+              // Aturdimiento real: durante un segundo no avanza sobre la pista.
+              bot.stunTimer = Math.max(0, bot.stunTimer - dt);
+              bot.currentSpeed = 0;
+            } else {
+              // Después del impacto recupera la velocidad progresivamente.
+              const accel = desiredSpeed > bot.currentSpeed ? 820 : 1050;
+              const maxChange = accel * dt;
+              bot.currentSpeed += THREE.MathUtils.clamp(desiredSpeed - bot.currentSpeed, -maxChange, maxChange);
+
+              // Pequeñas diferencias naturales sin convertir a ningún bot en misil.
+              const trafficWave = Math.sin(raceTime * 0.7 + botIndex * 1.9) * 35;
+              bot.raceDistance += Math.max(520, bot.currentSpeed + trafficWave) * dt;
+            }
+
+            bot.previousProgress = bot.progress;
+            bot.progress = ((bot.raceDistance % totalLength) + totalLength) % totalLength;
+
+            // El bot se coloca directamente sobre la curva, desplazado a su carril.
+            // Así no puede cortar por el césped ni atravesar las paredes.
+            const trackPoint = getPointAtProgress(bot.progress);
+            const targetX = trackPoint.pos.x + trackPoint.normal.x * bot.laneOffset;
+            const targetZ = trackPoint.pos.z + trackPoint.normal.z * bot.laneOffset;
+
+            const follow = 1 - Math.pow(1 - bot.steeringSmooth, dt * 60);
+            bot.x += (targetX - bot.x) * follow;
+            bot.z += (targetZ - bot.z) * follow;
+
+            const targetAngle = Math.atan2(trackPoint.tangent.z, trackPoint.tangent.x);
+            let angleDiff = targetAngle - bot.angle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            bot.angle += angleDiff * Math.min(1, dt * 8);
+
+            // La vuelta se obtiene de la distancia acumulada, sin depender del módulo.
+            const completedLaps = Math.floor(Math.max(0, bot.raceDistance) / totalLength);
+            bot.lap = completedLaps + 1;
+            if (bot.lap > lapsToWin) {
+              bot.finished = true;
+            }
+          }
+
+          bot.meshGroup.position.set(bot.x, 0, bot.z);
+          bot.meshGroup.rotation.y = -bot.angle + Math.PI / 2;
+          bot.hitFlash = Math.max(0, bot.hitFlash - dt);
+          bot.mainBody.material.color.setHex(bot.hitFlash > 0 ? 0xffff00 : bot.baseColor);
+        });
+      }
+
+      function updatePlayer(dt) {
+        const speed = Math.hypot(player.vx, player.vz);
+        const forwardX = Math.cos(player.angle);
+        const forwardZ = Math.sin(player.angle);
+        const sideX = -forwardZ;
+        const sideZ = forwardX;
+
+        let throttle = keys.up ? 1 : 0;
+        let brake = keys.down ? 1 : 0;
+        const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+
+        if (!running || player.finished) { throttle = 0; brake = 0; }
+
+        let activeTurboForce = 0;
+        if (player.turboTimer > 0) {
+          player.turboTimer -= dt;
+          activeTurboForce = 1500;
+          vignetteEl.classList.add('active-turbo');
+        } else {
+          vignetteEl.classList.remove('active-turbo');
+        }
+
+        updateEngineSound(speed, throttle);
+
+        const forwardSpeed = player.vx * forwardX + player.vz * forwardZ;
+        const lateralSpeed = player.vx * sideX + player.vz * sideZ;
+        const reversing = brake && forwardSpeed < 100;
+        const activeBrake = brake && !reversing ? brake : 0;
+        const reverse = reversing ? brake : 0;
+        const grip = Math.max(0.15, (1.2 - speed / 8000));
+        const steerRate = 3.0 / (1 + speed / 3500);
+
+        if (Math.abs(lateralSpeed) > 1200 && speed > 2000 && Math.random() < 0.2) {
+          playSoundEffect('skid');
+        }
+
+        player.angle += steer * steerRate * dt * Math.min(1, speed / 250 + 0.35);
+
+        const accelForce = 2800 + activeTurboForce;
+        player.vx += forwardX * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * dt;
+        player.vz += forwardZ * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * dt;
+
+        player.vx -= forwardX * activeBrake * 3500 * dt * Math.sign(forwardSpeed || 1);
+        player.vz -= forwardZ * activeBrake * 3500 * dt * Math.sign(forwardSpeed || 1);
+        player.vx -= forwardX * reverse * 1200 * dt;
+        player.vz -= forwardZ * reverse * 1200 * dt;
+        player.vx -= sideX * lateralSpeed * grip * 12 * dt;
+        player.vz -= sideZ * lateralSpeed * grip * 12 * dt;
+
+        const airDrag = 1.0 + Math.pow(speed / 5000, 1.4) * 0.1;
+        const rollingResistance = 0.999;
+        player.vx *= Math.pow(rollingResistance / airDrag, dt * 60);
+        player.vz *= Math.pow(rollingResistance / airDrag, dt * 60);
+
+        const currentLimit = player.turboTimer > 0 ? 6800 : player.maxSpeed;
+        const newSpeed = Math.hypot(player.vx, player.vz);
+        if (newSpeed > currentLimit) {
+          player.vx = (player.vx / newSpeed) * currentLimit;
+          player.vz = (player.vz / newSpeed) * currentLimit;
+        }
+
+        player.x += player.vx * dt;
+        player.z += player.vz * dt;
+
+        const nearest = nearestOnTrack(player.x, player.z);
+        player.previousProgress = player.progress;
+        player.progress = nearest.progress;
+
+        if (player.previousProgress > totalLength * 0.85 && player.progress < totalLength * 0.15 && running) {
+          player.lap += 1;
+          if (player.lap === lapsToWin) {
+            speakVoice("Final Lap!");
+          }
+          if (player.lap > lapsToWin) {
+            player.finished = true;
+            checkRaceEnd();
+          }
+        }
+
+        const limitDistance = roadWidth * 0.46;
+        if (nearest.d > limitDistance) {
+          player.x = nearest.x + nearest.nx * limitDistance;
+          player.z = nearest.z + nearest.nz * limitDistance;
+
+          const intoWall = player.vx * nearest.nx + player.vz * nearest.nz;
+          if (intoWall > 0) {
+            player.vx -= nearest.nx * intoWall * 1.4;
+            player.vz -= nearest.nz * intoWall * 1.4;
+            player.hitFlash = 0.15;
+            playSoundEffect('skid');
+          }
+        }
+        player.hitFlash = Math.max(0, player.hitFlash - dt);
+      }
+
+      function getRaceScore(car) {
+        // Los bots conservan una distancia acumulada real, incluso cuando parten
+        // detrás de la meta. El jugador usa vueltas + progreso sobre la pista.
+        return car.isBot ? car.raceDistance : (car.lap - 1) * totalLength + car.progress;
+      }
+
+      function checkRaceEnd() {
+        allCars.sort((a, b) => getRaceScore(b) - getRaceScore(a));
+
+        const playerRank = allCars.indexOf(player) + 1;
+        victoryHeading.textContent = playerRank === 1 ? '¡VICTORIA!' : `¡CARRERA FINALIZADA! (${playerRank}º PUESTO)`;
+        victoryStats.textContent = `Tiempo Total: ${raceTime.toFixed(1)}s\nClasificaste en la posición #${playerRank} de 10 bólidos`;
+        victoryModal.classList.add('show');
+      }
+
+      function updateCamera3D() {
+        player.meshGroup.position.set(player.x, 0, player.z);
+        player.meshGroup.rotation.y = -player.angle + Math.PI / 2;
+        player.mainBody.material.color.setHex(player.hitFlash > 0 ? 0xffff00 : 0xd97706);
+
+        const focusCar = isLiveMode && allCars.length ? [...allCars].sort((a,b)=>getRaceScore(b)-getRaceScore(a))[0] : player;
+
+        const camDistance = 260;
+        const camHeight = 100;
+
+        let shakeX = 0, shakeZ = 0;
+        if (player.hitFlash > 0) {
+          shakeX = (Math.random() - 0.5) * 18;
+          shakeZ = (Math.random() - 0.5) * 18;
+        }
+
+        const cx = focusCar.x - Math.cos(focusCar.angle) * camDistance + shakeX;
+        const cz = focusCar.z - Math.sin(focusCar.angle) * camDistance + shakeZ;
+
+        camera.position.x += (cx - camera.position.x) * 0.18;
+        camera.position.y += (camHeight - camera.position.y) * 0.18;
+        camera.position.z += (cz - camera.position.z) * 0.18;
+
+        camera.lookAt(focusCar.x, 20, focusCar.z);
+      }
+
+      function resize() {
+        const width = stage.clientWidth;
+        const height = stage.clientHeight;
+        if (renderer && camera) {
+          renderer.setSize(width, height, false);
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+      }
+
+      function updateHud() {
+        const speedVal = Math.hypot(player.vx, player.vz);
+        const kmh = Math.round(speedVal * 0.052);
+        speedEl.textContent = String(kmh);
+
+        const rpmPercent = Math.min(100, (speedVal / 5300) * 100);
+        rpmBarEl.style.width = `${rpmPercent}%`;
+        if (player.turboTimer > 0) {
+          rpmBarEl.style.background = '#38bdf8';
+        } else if (rpmPercent > 80) {
+          rpmBarEl.style.background = '#ef4444';
+        } else {
+          rpmBarEl.style.background = '#22c55e';
+        }
+
+        const trackProgressPercent = Math.min(100, (player.progress / totalLength) * 100);
+        circuitProgressBar.style.width = `${trackProgressPercent}%`;
+
+        allCars.sort((a, b) => getRaceScore(b) - getRaceScore(a));
+        const liveRank = allCars.indexOf(player) + 1;
+        posEl.textContent = isLiveMode ? (allCars[0] ? `1 · ${allCars[0].name}` : '-') : String(liveRank);
+
+        const hudCar = isLiveMode && allCars.length ? allCars[0] : player;
+        lapEl.textContent = `${Math.min(hudCar.lap, lapsToWin)}/${lapsToWin}`;
+        timeEl.textContent = raceTime.toFixed(1);
+
+        if (!player.item) {
+          itemEl.textContent = 'Vacío';
+        } else {
+          const name = player.item === 'turbo' ? '🚀 Turbo' : '💥 Disparo';
+          itemEl.textContent = `${name} (${player.itemCharges})`;
+        }
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.033, (now - last) / 1000 || 0.016);
+        last = now;
+
+        updateCountdown(now);
+        if (running && !player.finished) raceTime += dt;
+
+        updatePlayer(dt);
+        updateBots(dt);
+        updateRemoteCars(dt);
+        checkLiveCollisions(now);
+        updateItemsAndBullets(dt);
+        updateCamera3D();
+        updateHud();
+        publishLocalPlayer(now);
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(frame);
+      }
+
+      function setKey(name, value) {
+        initAudio();
+        if (name in keys) keys[name] = value;
+      }
+
+      window.addEventListener('keydown', event => {
+        if (event.code === 'Space') {
+          event.preventDefault();
+          triggerItem();
+          return;
+        }
+        const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
+        const key = map[event.key];
+        if (key) {
+          event.preventDefault();
+          setKey(key, true);
+        }
+      });
+
+      window.addEventListener('keyup', event => {
+        const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
+        const key = map[event.key];
+        if (key) {
+          event.preventDefault();
+          setKey(key, false);
+        }
+      });
+
+      root.querySelectorAll('[data-hold]').forEach(button => {
+        const name = button.getAttribute('data-hold');
+        button.addEventListener('pointerdown', () => setKey(name, true));
+        button.addEventListener('pointerup', () => setKey(name, false));
+        button.addEventListener('pointerleave', () => setKey(name, false));
+      });
+
+      useItemBtn.addEventListener('click', () => { triggerItem(); });
+      joinBtn.addEventListener('click', joinRace);
+      nicknameInput.addEventListener('keydown', event => { if (event.key === 'Enter') joinRace(); });
+      judgeLoginBtn.addEventListener('click', enterJudge);
+      judgePassword.addEventListener('keydown', event => { if (event.key === 'Enter') enterJudge(); });
+      judgeStartBtn.addEventListener('click', judgeStart);
+      judgeNewBtn.addEventListener('click', judgeNewRace);
+      judgeClearBtn.addEventListener('click', judgeClearRoom);
+      stage.addEventListener('pointerdown', () => { initAudio(); canvas.focus(); });
+      resetBtn.addEventListener('click', () => { if (isJudgeMode) judgeNewRace(); });
+      victoryResetBtn.addEventListener('click', () => { if (isJudgeMode) judgeNewRace(); });
+
+      new ResizeObserver(resize).observe(stage);
+
+      buildTrackCurve();
+      init3D();
+      resize();
+      resetRace();
+      if (isJudgeMode) { joinScreen.classList.add('hidden'); judgeScreen.classList.remove('hidden'); }
+      if (isLiveMode) { joinScreen.classList.add('hidden'); liveLabel.classList.remove('hidden'); }
+      if (!isJudgeMode) resetBtn.style.display = 'none';
+      connectToRoom();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</div>
