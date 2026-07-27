@@ -1,0 +1,202 @@
+¿Cuál número es mayor?
+Opciones: 48, 84, 64, 46
+Respuesta: 84
+
+¿Cuál número es menor?
+Opciones: 17, 71, 27, 37
+Respuesta: 17
+
+¿Cuál es la capital de Colombia?
+Opciones: Cali, Bogotá, Medellín, Barranquilla
+Respuesta: Bogotá
+
+¿Cuánto es 7 × 8?
+Opciones: 54, 56, 58, 64
+Respuesta: 56
+
+¿Qué planeta es conocido como el planeta rojo?
+Opciones: Venus, Marte, Júpiter, Saturno
+Respuesta: Marte
+
+¿Qué animal es herbívoro?
+Opciones: León, Águila, Vaca, Serpiente
+Respuesta: Vaca
+
+¿Cuál va primero alfabéticamente?
+Opciones: Casa, Árbol, Mesa, Zapato
+Respuesta: Árbol
+
+¿Cuánto es 100 - 37?
+Opciones: 63, 67, 73, 57
+Respuesta: 63
+
+¿Cuál es un número par?
+Opciones: 13, 25, 42, 57
+Respuesta: 42
+
+Ordena la cadena alimenticia correcta.
+Opciones:
+Serpiente come rana y rana come mosca
+Mosca come rana y rana come serpiente
+Rana come serpiente y serpiente come mosca
+Mosca come serpiente y serpiente come rana
+Respuesta: Serpiente come rana y rana come mosca
+
+Ordena de mayor a menor: 9, 21, 14, 3
+Respuesta: 21, 14, 9, 3
+
+¿Cuál palabra completa la frase? “El sol nos da ___”.
+Opciones: frío, luz, oscuridad, sombra
+Respuesta: luz
+
+¿Cuántos lados tiene un triángulo?
+Opciones: 2, 3, 4, 5
+Respuesta: 3
+
+¿Cuál es el doble de 16?
+Opciones: 24, 30, 32, 36
+Respuesta: 32
+
+¿Qué órgano bombea la sangre?
+Opciones: Pulmón, Estómago, Corazón, Riñón
+Respuesta: Corazón
+
+Si todos los perros son animales y Toby es un perro, entonces Toby es:
+Opciones: una planta, un animal, un objeto, un número
+Respuesta: un animal
+
+¿Qué objeto usarías para medir temperatura?
+Opciones: Regla, Termómetro, Balanza, Reloj
+Respuesta: Termómetro
+
+¿Cuál material permite ver a través de él?
+Opciones: Madera, Vidrio, Cartón, Piedra
+Respuesta: Vidrio
+
+¿Qué necesita una planta para hacer fotosíntesis?
+Opciones: Luz, Arena seca, Plástico, Humo
+Respuesta: Luz
+
+Si empujas una caja con más fuerza, normalmente la caja:
+Opciones: se mueve más, desaparece, pesa menos, se vuelve líquida
+Respuesta: se mueve más
+
+¿Qué estado del agua es el hielo?
+Opciones: Líquido, Gaseoso, Sólido, Plasma
+Respuesta: Sólido
+
+¿Cuál acción ayuda a cuidar el agua?
+Opciones: Dejar la llave abierta, Cerrar la llave al cepillarse, Botar basura al río, Lavar con manguera todo el día
+Respuesta: Cerrar la llave al cepillarse
+
+Si tienes una vela encendida y la tapas con un vaso, después de un tiempo la llama:
+Opciones: crece mucho, se apaga, se vuelve azul para siempre, explota
+Respuesta: se apaga
+
+¿Qué sentido usamos principalmente para escuchar?
+Opciones: Vista, Oído, Gusto, Tacto
+Respuesta: Oído
+
+¿Cuál de estos alimentos viene de una planta?
+Opciones: Manzana, Pollo, Pescado, Queso
+Respuesta: Manzana
+
+Si una persona compra algo de $3.000 y paga con $5.000, ¿cuánto le devuelven?
+Opciones: $1.000, $2.000, $3.000, $8.000
+Respuesta: $2.000
+
+¿Cuál objeto es mejor para protegerse de la lluvia?
+Opciones: Sombrilla, Cuaderno, Zapato, Lápiz
+Respuesta: Sombrilla
+
+¿Qué sucede si mezclas rojo y azul en pintura?
+Opciones: Verde, Morado, Amarillo, Blanco
+Respuesta: Morado
+
+¿Cuál situación muestra cooperación?
+Opciones: Todos ayudan a recoger el salón, Uno rompe el trabajo del otro, Nadie escucha, Todos empujan para pasar primero
+Respuesta: Todos ayudan a recoger el salón
+
+¿Qué animal respira por branquias?
+Opciones: Perro, Pez, Gallina, Caballo
+Respuesta: Pez
+
+
+31. En una cuadrícula, un punto está en (2, 3). Si se mueve 2 unidades a la derecha, ¿dónde queda?
+Opciones: (4, 3), (2, 5), (0, 3), (4, 5)
+Respuesta: (4, 3)
+Un punto está en (5, 2). Si baja 1 unidad, ¿dónde queda?
+Opciones: (5, 1), (4, 2), (6, 2), (5, 3)
+Respuesta: (5, 1)
+
+Si un triángulo se traslada 3 unidades a la derecha, su forma:
+Opciones: cambia, se mantiene igual, se vuelve círculo, se hace más pequeño
+Respuesta: se mantiene igual
+
+Si una figura se rota, ¿qué cambia principalmente?
+Opciones: su orientación, su cantidad de lados, su nombre, su material
+Respuesta: su orientación
+
+¿Qué figura tiene cuatro lados iguales?
+Opciones: Cuadrado, Triángulo, Círculo, Pentágono
+Respuesta: Cuadrado
+
+¿Cuál figura no tiene vértices?
+Opciones: Círculo, Cuadrado, Triángulo, Rectángulo
+Respuesta: Círculo
+
+Si ves esta secuencia: ▲, ■, ▲, ■, ▲, ? ¿qué sigue?
+Opciones: ■, ▲, ●, ◆
+Respuesta: ■
+
+Si ves esta secuencia: 2, 4, 6, 8, ? ¿qué sigue?
+Opciones: 9, 10, 12, 16
+Respuesta: 10
+
+Si ves esta secuencia: rojo, azul, rojo, azul, ? ¿qué sigue?
+Opciones: rojo, azul, verde, amarillo
+Respuesta: rojo
+
+Analogía: Día es a noche como claro es a:
+Opciones: oscuro, alto, rápido, dulce
+Respuesta: oscuro
+
+Analogía: Caliente es a frío como arriba es a:
+Opciones: abajo, cerca, lejos, grande
+Respuesta: abajo
+
+Analogía: Pez es a agua como ave es a:
+Opciones: aire, tierra, fuego, piedra
+Respuesta: aire
+
+¿Cuál objeto no pertenece al grupo?
+Opciones: Manzana, Pera, Banano, Zapato
+Respuesta: Zapato
+
+¿Cuál no pertenece al grupo?
+Opciones: Cuadrado, Triángulo, Rectángulo, Perro
+Respuesta: Perro
+
+Si una flecha apunta hacia arriba ↑ y se rota media vuelta, queda apuntando hacia:
+Opciones: abajo, arriba, derecha, izquierda
+Respuesta: abajo
+
+Si una flecha apunta hacia la derecha → y se rota un cuarto de vuelta hacia la izquierda, queda apuntando hacia:
+Opciones: arriba, abajo, derecha, izquierda
+Respuesta: arriba
+
+¿Cuál figura tiene más lados?
+Opciones: Triángulo, Cuadrado, Pentágono, Círculo
+Respuesta: Pentágono
+
+Si un rectángulo se refleja como en un espejo, ¿qué cambia?
+Opciones: se invierte su posición, pierde sus lados, se vuelve círculo, desaparece
+Respuesta: se invierte su posición
+
+Si una figura está a la izquierda de una línea y se refleja, aparecerá:
+Opciones: a la derecha, en el mismo lugar, más pequeña, sin color
+Respuesta: a la derecha
+
+Observa la regla: grande, pequeño, grande, pequeño, ? ¿qué sigue?
+Opciones: grande, pequeño, mediano, igual
+Respuesta: grande
