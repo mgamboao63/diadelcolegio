@@ -509,7 +509,7 @@
         const rifleBaseRotation = new THREE.Euler(-0.2158, -1.5579, -0.1200);
         const leftGripLocalPosition = new THREE.Vector3(-0.30, 0.28, 0.06);
         const rightGripLocalPosition = new THREE.Vector3(0.34, 0.16, -0.14);
-        const rifleMuzzleLocalPosition = new THREE.Vector3(-1.65, 0.08, 0.02);
+        const rifleMuzzleLocalPosition = new THREE.Vector3(-1.78, 1.20, 0.02);
         const aimGuideLength = 520;
         const aimScopeScreenOffset = new THREE.Vector2(-42, 0);
         const shotAimVerticalOffset = 0.18;
@@ -570,9 +570,11 @@
         let playerRegistered = false;
         let playerNickname = '';
         let playerTeam = 'red';
+        let localSpawnSlot = 0;
         let selectedLobbyAvatar = 0;
         let playerHealth = 3;
         let gameOver = false;
+        let shotSequence = 0;
 
         const moveSpeed = 180;
         const sprintSpeed = 350;
@@ -721,6 +723,7 @@
             };
 
             syncRegistrationsFromRoom();
+            syncLocalCombatState();
             renderLobby();
             syncRemotePlayers();
             setJudgeMessage(`Conectados: ${getRoomPlayers().length}/10`);
@@ -749,6 +752,23 @@
                 updateGameStatus(`Partida iniciada. Jugador: ${playerNickname} (${playerTeam === 'blue' ? 'azul' : 'rojo'}).`);
             } else if (phase === 'lobby' && previousPhase !== 'lobby') {
                 updateGameStatus('Inscribete y espera la orden del juez.');
+            }
+        }
+
+        function syncLocalCombatState() {
+            if (!playerRegistered || !firebaseUid) return;
+            const localData = roomData.players[firebaseUid];
+            if (!localData) return;
+
+            const syncedHealth = Math.max(0, Math.min(3, Number(localData.health) || 0));
+            const receivedImpact = syncedHealth < playerHealth;
+            playerHealth = syncedHealth;
+            if (receivedImpact && !gameOver) {
+                showEliminationOverlay('IMPACTO', false, 'hit');
+                updateGameStatus('Te impactaron. Busca cobertura.');
+            }
+            if (localData.alive === false && !gameOver) {
+                endGame('Perdiste: recibiste 3 impactos.', 'lose');
             }
         }
 
@@ -868,7 +888,12 @@
                 loopEnd: walkLoopEnd,
                 lastX: Number(playerData.x) || 0,
                 lastZ: Number(playerData.z) || 0,
-                movingUntil: 0
+                movingUntil: 0,
+                targetPosition: new THREE.Vector3(),
+                targetYaw: 0,
+                hasReceivedTransform: false,
+                lastShotId: null,
+                rifleHandTransform: null
             };
             ensureRemoteVisual(remote, playerData);
             updateRemotePlayerTransform(remote, playerData, index);
@@ -910,7 +935,8 @@
 
             if (sourceAvatar && !remote.avatarObject) {
                 const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
-                remoteAvatar.rotation.y = Math.PI;
+                // El modelo ya trae su correccion de eje; no se rota otra vez.
+                remoteAvatar.rotation.y = 0;
                 remoteAvatar.traverse((child) => {
                     if (child.isMesh) {
                         child.castShadow = true;
@@ -942,12 +968,61 @@
                 remote.group.add(remoteRifle);
                 remote.rifleObject = remoteRifle;
             }
+
+            mountRemoteRifle(remote);
+        }
+
+        function findBoneInAvatar(targetAvatar, nameParts) {
+            let found = null;
+            targetAvatar?.traverse((child) => {
+                if (found || !child.isBone) return;
+                const normalizedName = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (nameParts.some((part) => normalizedName.includes(part))) found = child;
+            });
+            return found;
+        }
+
+        function getLocalRifleTransformInRightHand() {
+            if (!player || !rifle || !avatar) return null;
+            const localRightHand = rightHandBone || findBoneInAvatar(avatar, ['righthand']);
+            if (!localRightHand) return null;
+
+            player.updateMatrixWorld(true);
+            localRightHand.updateMatrixWorld(true);
+            rifle.updateMatrixWorld(true);
+
+            const position = rifle.getWorldPosition(new THREE.Vector3());
+            const quaternion = rifle.getWorldQuaternion(new THREE.Quaternion());
+            const handQuaternion = localRightHand.getWorldQuaternion(new THREE.Quaternion());
+            localRightHand.worldToLocal(position);
+            quaternion.premultiply(handQuaternion.invert());
+            return { position, quaternion };
+        }
+
+        function mountRemoteRifle(remote) {
+            if (!remote.rifleObject || !remote.avatarObject) return;
+            const remoteRightHand = findBoneInAvatar(remote.avatarObject, ['righthand']);
+            // Se calcula una sola vez: el rifle remoto no debe copiar los pasos
+            // ni la animacion de las manos del jugador que esta viendo la partida.
+            if (!remote.rifleHandTransform) {
+                remote.rifleHandTransform = getLocalRifleTransformInRightHand();
+            }
+            const handTransform = remote.rifleHandTransform;
+            if (!remoteRightHand || !handTransform) return;
+
+            if (remote.rifleObject.parent !== remoteRightHand) {
+                remote.rifleObject.removeFromParent();
+                remoteRightHand.add(remote.rifleObject);
+                remote.rifleObject.position.copy(handTransform.position);
+                remote.rifleObject.quaternion.copy(handTransform.quaternion);
+            }
+            remote.rifleObject.updateMatrixWorld(true);
         }
 
         function updateRemotePlayerTransform(remote, playerData, index) {
             ensureRemoteVisual(remote, playerData);
             const team = playerData.team === 'red' ? 'red' : 'blue';
-            const fallback = getTeamSpawn(team, index);
+            const fallback = getTeamSpawn(team, getPlayerSpawnSlot(playerData, index));
             const storedX = Number(playerData.x);
             const storedZ = Number(playerData.z);
             const hasPublishedPosition = Number.isFinite(storedX) && Number.isFinite(storedZ) && (Math.abs(storedX) + Math.abs(storedZ) > 2);
@@ -965,12 +1040,36 @@
             remote.lastZ = z;
 
             remote.group.visible = playerData.alive !== false;
-            remote.group.position.lerp(new THREE.Vector3(x, y, z), 0.35);
-            remote.group.rotation.y = THREE.MathUtils.lerp(remote.group.rotation.y, yawValue, 0.35);
+            remote.targetPosition.set(x, y, z);
+            remote.targetYaw = yawValue;
+            // La primera vez aparece directamente en la posicion enviada,
+            // no recorre media arena desde el punto (0, 0, 0).
+            if (!remote.hasReceivedTransform) {
+                remote.group.position.copy(remote.targetPosition);
+                remote.group.rotation.y = remote.targetYaw;
+                remote.hasReceivedTransform = true;
+            }
+
+            syncRemoteShot(remote, playerData);
 
             if (remote.action) {
                 remote.action.timeScale = performance.now() < remote.movingUntil ? 0.9 : 0;
             }
+        }
+
+        function syncRemoteShot(remote, playerData) {
+            const shotData = playerData.lastShot;
+            if (!shotData || !shotData.id || shotData.id === remote.lastShotId) return;
+            remote.lastShotId = shotData.id;
+            if (Number.isFinite(Number(shotData.createdAt)) && Date.now() - Number(shotData.createdAt) > paintballLife * 1000) return;
+
+            const start = new THREE.Vector3(Number(shotData.x), Number(shotData.y), Number(shotData.z));
+            const direction = new THREE.Vector3(Number(shotData.dx), Number(shotData.dy), Number(shotData.dz));
+            if (!Number.isFinite(start.x) || !Number.isFinite(start.y) || !Number.isFinite(start.z) || direction.lengthSq() < 0.01) return;
+            spawnPaintball(start, direction, Number(shotData.color) || paintballColor, shotData.team === 'red' ? 'red' : 'blue', {
+                ownerUid: remote.uid,
+                shotId: shotData.id
+            });
         }
 
         function renderAvatarChoices() {
@@ -1056,6 +1155,7 @@
                         nickname,
                         team,
                         avatar: selectedLobbyAvatar,
+                        spawnSlot: teamCount,
                         health: 3,
                         alive: true,
                         x: Number(spawn.position.x.toFixed(2)),
@@ -1088,8 +1188,9 @@
                 playerRegistered = true;
                 playerNickname = nickname;
                 playerTeam = team;
+                localSpawnSlot = getPlayerSpawnSlot(savedPlayer, 0);
                 playerCharacterFile = team === 'blue' ? 'character.fbx' : 'red_character.fbx';
-                placePlayerAtTeamSpawn(team);
+                placePlayerAtTeamSpawn(team, savedPlayer);
                 loadCharacter();
                 if (enableExternalRifle) {
                     loadRifle();
@@ -1113,17 +1214,22 @@
             if (!force && now - lastPublishTime < 95) return;
             lastPublishTime = now;
 
-            update(localPlayerRef, {
+            const state = {
                 x: Number(player.position.x.toFixed(2)),
                 y: Number(player.position.y.toFixed(2)),
                 z: Number(player.position.z.toFixed(2)),
                 yaw: Number(yaw.toFixed(4)),
                 rotationY: Number(player.rotation.y.toFixed(4)),
-                health: playerHealth,
-                alive: !gameOver && player.visible !== false,
                 crouching: isCrouching,
                 updatedAt: serverTimestamp()
-            }).catch(() => {});
+            };
+            // La vida solo se publica al iniciar, terminar o recibir un cambio propio.
+            // Asi un movimiento normal no revierte un impacto recibido desde Firebase.
+            if (force) {
+                state.health = playerHealth;
+                state.alive = !gameOver && player.visible !== false;
+            }
+            update(localPlayerRef, state).catch(() => {});
         }
 
         function lockRegisteredPlayerForm() {
@@ -1230,10 +1336,22 @@
             };
         }
 
-        function placePlayerAtTeamSpawn(team) {
-            const spawn = getTeamSpawn(team, registrations[team]?.length || 0);
-            player.position.set(spawn.position.x, 0, spawn.position.z);
-            yaw = spawn.yaw;
+        function getPlayerSpawnSlot(playerData, fallbackIndex = 0) {
+            const storedSlot = Number(playerData?.spawnSlot);
+            if (Number.isInteger(storedSlot) && storedSlot >= 0 && storedSlot < maxPlayersPerTeam) {
+                return storedSlot;
+            }
+            return Math.max(0, Math.min(maxPlayersPerTeam - 1, fallbackIndex));
+        }
+
+        function placePlayerAtTeamSpawn(team, playerData = null) {
+            const spawn = getTeamSpawn(team, playerData ? getPlayerSpawnSlot(playerData, localSpawnSlot) : localSpawnSlot);
+            const storedX = Number(playerData?.x);
+            const storedZ = Number(playerData?.z);
+            const hasStoredPosition = Number.isFinite(storedX) && Number.isFinite(storedZ);
+            player.position.set(hasStoredPosition ? storedX : spawn.position.x, 0, hasStoredPosition ? storedZ : spawn.position.z);
+            yaw = Number.isFinite(Number(playerData?.yaw)) ? Number(playerData.yaw) : spawn.yaw;
+            player.rotation.y = Number.isFinite(Number(playerData?.rotationY)) ? Number(playerData.rotationY) : yaw + playerFacingOffset;
         }
 
         function createRosterMarker(nickname, team, index) {
@@ -2584,10 +2702,20 @@
 
             const start = getRifleMuzzleWorldPosition();
             const direction = getRifleShotDirection();
-            spawnPaintball(start, direction, paintballColor, 'blue');
+            const shotId = `${firebaseUid}-${Date.now()}-${++shotSequence}`;
+            const color = playerTeam === 'red' ? 0xd92828 : paintballColor;
+            spawnPaintball(start, direction, color, playerTeam, { ownerUid: firebaseUid, shotId });
+            // Se envia solo la trayectoria: cada equipo dibuja la misma bola localmente.
+            update(localPlayerRef, {
+                lastShot: {
+                    id: shotId, x: Number(start.x.toFixed(2)), y: Number(start.y.toFixed(2)), z: Number(start.z.toFixed(2)),
+                    dx: Number(direction.x.toFixed(5)), dy: Number(direction.y.toFixed(5)), dz: Number(direction.z.toFixed(5)),
+                    color, team: playerTeam, createdAt: Date.now()
+                }
+            }).catch(() => {});
         }
 
-        function spawnPaintball(start, direction, color, team) {
+        function spawnPaintball(start, direction, color, team, metadata = {}) {
             const material = new THREE.MeshStandardMaterial({
                 color,
                 emissive: color,
@@ -2604,7 +2732,9 @@
                 mesh: ball,
                 velocity: direction.clone().normalize().multiplyScalar(paintballSpeed),
                 life: paintballLife,
-                team
+                team,
+                ownerUid: metadata.ownerUid || null,
+                shotId: metadata.shotId || null
             });
         }
 
@@ -2612,21 +2742,32 @@
             for (let i = paintballs.length - 1; i >= 0; i--) {
                 const shot = paintballs[i];
                 shot.life -= delta;
-                shot.mesh.position.addScaledVector(shot.velocity, delta);
 
-                const outOfArena = Math.abs(shot.mesh.position.x) > arenaLimit + 400 ||
-                    Math.abs(shot.mesh.position.z) > arenaLimit + 400 ||
-                    shot.mesh.position.y < 3;
-                const hitCollider = getHitCollider(shot.mesh.position, 7);
-                const hitCover = hitCollider !== null;
-                const hitAvatar = handlePaintballAvatarHit(shot);
-                const hitGround = shot.mesh.position.y < 8;
+                // Un salto de fotogramas no puede hacer que una bola atraviese a un jugador.
+                const steps = Math.max(1, Math.ceil((shot.velocity.length() * delta) / 12));
+                const stepVelocity = shot.velocity.clone().multiplyScalar(delta / steps);
+                let removeShot = false;
 
-                if (hitCover || hitGround) {
-                    createPaintSplat(shot.mesh.position, shot.mesh.material.color, hitCollider);
+                for (let step = 0; step < steps; step++) {
+                    shot.mesh.position.add(stepVelocity);
+                    const outOfArena = Math.abs(shot.mesh.position.x) > arenaLimit + 400 ||
+                        Math.abs(shot.mesh.position.z) > arenaLimit + 400 ||
+                        shot.mesh.position.y < 3;
+                    const hitCollider = getHitCollider(shot.mesh.position, 7);
+                    const hitCover = hitCollider !== null;
+                    const hitAvatar = handlePaintballAvatarHit(shot);
+                    const hitGround = shot.mesh.position.y < 8;
+
+                    if (hitCover || hitGround) {
+                        createPaintSplat(shot.mesh.position, shot.mesh.material.color, hitCollider);
+                    }
+                    if (shot.life <= 0 || outOfArena || hitCover || hitGround || hitAvatar) {
+                        removeShot = true;
+                        break;
+                    }
                 }
 
-                if (shot.life <= 0 || outOfArena || hitCover || hitGround || hitAvatar) {
+                if (removeShot) {
                     scene.remove(shot.mesh);
                     shot.mesh.geometry.dispose();
                     shot.mesh.material.dispose();
@@ -2679,6 +2820,11 @@
 
         function updateRemotePlayerAnimations(delta) {
             remotePlayers.forEach((remote) => {
+                if (remote.hasReceivedTransform) {
+                    const smoothing = Math.min(1, delta * 10);
+                    remote.group.position.lerp(remote.targetPosition, smoothing);
+                    remote.group.rotation.y = THREE.MathUtils.lerp(remote.group.rotation.y, remote.targetYaw, smoothing);
+                }
                 if (!remote.mixer || !remote.action) return;
 
                 remote.mixer.update(delta);
@@ -2770,31 +2916,57 @@
         }
 
         function handlePaintballAvatarHit(shot) {
-            if (shot.team === 'blue') {
+            // Solo el computador que disparo confirma el impacto contra un rival.
+            // Esto evita que la misma bola reste vida dos veces en otros equipos.
+            if (shot.ownerUid === firebaseUid) {
+                const remoteHit = Array.from(remotePlayers.values()).find((remote) =>
+                    remote.group.visible && remote.team !== playerTeam &&
+                    distanceXZ(shot.mesh.position, remote.group.position) < 64 &&
+                    shot.mesh.position.y > remote.group.position.y + 35 &&
+                    shot.mesh.position.y < remote.group.position.y + 185
+                );
+                if (remoteHit) {
+                    registerPaintballHit(remoteHit.uid, shot.shotId);
+                    showEliminationOverlay('¡IMPACTO!', false, 'hit');
+                    return true;
+                }
+            }
+
+            // En el equipo impactado se elimina visualmente la bola; la vida llega desde Firebase.
+            const playerHitMinY = player.position.y + 35;
+            const playerHitMaxY = player.position.y + (isCrouching ? 130 : 180);
+            if (shot.ownerUid && shot.ownerUid !== firebaseUid && shot.team !== playerTeam && player && !gameOver &&
+                distanceXZ(shot.mesh.position, player.position) < 58 &&
+                shot.mesh.position.y > playerHitMinY && shot.mesh.position.y < playerHitMaxY) {
+                return true;
+            }
+
+            // Se conserva la practica contra los bots, si se activan mas adelante.
+            if (!shot.ownerUid && shot.team === 'blue') {
                 const hit = teamAvatars.find((npc) => npc.alive && npc.team === 'red' &&
                     distanceXZ(shot.mesh.position, npc.group.position) < 58 &&
                     shot.mesh.position.y > 45 && shot.mesh.position.y < 175);
-                if (!hit) return false;
-
-                damageNpc(hit);
-                return true;
-            }
-
-            const playerHitMinY = player.position.y + 38;
-            const playerHitMaxY = player.position.y + (isCrouching ? 128 : 175);
-            if (shot.team === 'red' && player && !gameOver &&
-                distanceXZ(shot.mesh.position, player.position) < 45 &&
-                shot.mesh.position.y > playerHitMinY && shot.mesh.position.y < playerHitMaxY) {
-                playerHealth -= 1;
-                updateGameStatus();
-                publishLocalPlayerState(true);
-                if (playerHealth <= 0) {
-                    endGame('Perdiste: te eliminaron con 3 impactos.', 'lose');
+                if (hit) {
+                    damageNpc(hit);
+                    return true;
                 }
-                return true;
             }
-
             return false;
+        }
+
+        function registerPaintballHit(targetUid, shotId) {
+            if (!targetUid || !shotId || !firebaseReady) return;
+            const targetRef = ref(firebaseDb, `juegos/paintball/players/${targetUid}`);
+            runTransaction(targetRef, (target) => {
+                if (!target || target.alive === false || target.lastImpactId === shotId) return;
+                const health = Math.max(0, (Number(target.health) || 3) - 1);
+                target.health = health;
+                target.alive = health > 0;
+                target.eliminated = health === 0;
+                target.lastImpactId = shotId;
+                target.updatedAt = Date.now();
+                return target;
+            }).catch(() => {});
         }
 
         function damageNpc(npc) {
