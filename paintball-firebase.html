@@ -1209,6 +1209,9 @@
 
         function publishLocalPlayerState(force = false) {
             if (!firebaseReady || !playerRegistered || !localPlayerRef || !player) return;
+            // Durante la inscripcion no se envian posiciones: asi las transacciones
+            // de registro de varios equipos no chocan entre si en Firebase.
+            if (!force && gameState !== 'running') return;
 
             const now = performance.now();
             if (!force && now - lastPublishTime < 95) return;
