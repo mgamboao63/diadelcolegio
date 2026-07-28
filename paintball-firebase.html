@@ -564,6 +564,7 @@
         const redFlagPosition = new THREE.Vector3();
         const maxPlayersPerTeam = 5;
         const judgePassword = '136101521';
+        const arenaSeed = 240727;
         const pageMode = new URLSearchParams(window.location.search).get('modo') || 'jugador';
         let gameState = 'lobby';
         let playerRegistered = false;
@@ -606,6 +607,23 @@
 
         let yaw = 0;
         let pitch = -0.08;
+        let arenaRandom = createSeededRandom(arenaSeed);
+
+        function createSeededRandom(seed) {
+            let state = seed >>> 0;
+            return () => {
+                state = (state * 1664525 + 1013904223) >>> 0;
+                return state / 4294967296;
+            };
+        }
+
+        function resetArenaRandom() {
+            arenaRandom = createSeededRandom(arenaSeed);
+        }
+
+        function seededArenaRandom() {
+            return arenaRandom();
+        }
 
         function init() {
             scene = new THREE.Scene();
@@ -1886,6 +1904,7 @@
         }
 
         function createArena() {
+            resetArenaRandom();
             chooseFlagBases();
             const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x516f48, roughness: 0.95 });
             const ground = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000, 200, 200), groundMaterial);
@@ -1908,7 +1927,7 @@
 
         function chooseFlagBases() {
             const radius = 2380;
-            const angle = Math.floor(Math.random() * 4) * (Math.PI / 2) + Math.PI / 4;
+            const angle = Math.floor(seededArenaRandom() * 4) * (Math.PI / 2) + Math.PI / 4;
             blueFlagPosition.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
             redFlagPosition.copy(blueFlagPosition).multiplyScalar(-1);
         }
