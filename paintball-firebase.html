@@ -847,18 +847,90 @@
 
         function createRemotePlayer(uid, playerData, index) {
             const team = playerData.team === 'red' ? 'red' : 'blue';
-            const sourceAvatar = getRemoteSourceAvatar(team);
-            if (!sourceAvatar) return null;
-
             const remoteGroup = new THREE.Group();
             remoteGroup.name = `Jugador remoto ${playerData.nickname || uid}`;
 
-            const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
-            remoteAvatar.rotation.y = Math.PI;
-            remoteGroup.add(remoteAvatar);
             addTeamMarker(remoteGroup, team === 'red' ? 0xd92828 : 0x1e68ff);
+            const placeholder = createRemotePlaceholder(team);
+            remoteGroup.add(placeholder);
 
-            if (rifle) {
+            scene.add(remoteGroup);
+            const remote = {
+                uid,
+                group: remoteGroup,
+                team,
+                placeholder,
+                avatarObject: null,
+                rifleObject: null,
+                mixer: null,
+                action: null,
+                loopStart: walkLoopStart,
+                loopEnd: walkLoopEnd,
+                lastX: Number(playerData.x) || 0,
+                lastZ: Number(playerData.z) || 0,
+                movingUntil: 0
+            };
+            ensureRemoteVisual(remote, playerData);
+            updateRemotePlayerTransform(remote, playerData, index);
+            return remote;
+        }
+
+        function createRemotePlaceholder(team) {
+            const color = team === 'red' ? 0xd92828 : 0x1e68ff;
+            const group = new THREE.Group();
+            group.name = 'Marcador temporal remoto';
+
+            const material = new THREE.MeshStandardMaterial({ color, roughness: 0.56, metalness: 0.05 });
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(24, 86, 8, 16), material);
+            body.position.y = 72;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            group.add(body);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(22, 18, 12), material);
+            head.position.y = 142;
+            head.castShadow = true;
+            group.add(head);
+
+            const rifleBar = new THREE.Mesh(
+                new THREE.BoxGeometry(105, 9, 9),
+                new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.72 })
+            );
+            rifleBar.position.set(0, 112, -42);
+            rifleBar.rotation.y = Math.PI / 2;
+            rifleBar.castShadow = true;
+            group.add(rifleBar);
+
+            return group;
+        }
+
+        function ensureRemoteVisual(remote, playerData) {
+            const team = playerData.team === 'red' ? 'red' : 'blue';
+            const sourceAvatar = getRemoteSourceAvatar(team);
+
+            if (sourceAvatar && !remote.avatarObject) {
+                const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
+                remoteAvatar.rotation.y = Math.PI;
+                remoteAvatar.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                remote.group.add(remoteAvatar);
+                remote.avatarObject = remoteAvatar;
+                if (remote.placeholder) {
+                    remote.placeholder.visible = false;
+                }
+
+                const animation = createNpcWalkAnimation(remoteAvatar, team);
+                remote.mixer = animation.mixer;
+                remote.action = animation.action;
+                remote.loopStart = animation.loopStart ?? walkLoopStart;
+                remote.loopEnd = animation.loopEnd ?? walkLoopEnd;
+            }
+
+            if (rifle && !remote.rifleObject) {
                 const remoteRifle = rifle.clone(true);
                 remoteRifle.traverse((child) => {
                     if (child.isMesh) {
@@ -867,27 +939,13 @@
                         if (child.material) child.material = child.material.clone();
                     }
                 });
-                remoteGroup.add(remoteRifle);
+                remote.group.add(remoteRifle);
+                remote.rifleObject = remoteRifle;
             }
-
-            scene.add(remoteGroup);
-            const animation = createNpcWalkAnimation(remoteAvatar, team);
-            const remote = {
-                uid,
-                group: remoteGroup,
-                mixer: animation.mixer,
-                action: animation.action,
-                loopStart: animation.loopStart ?? walkLoopStart,
-                loopEnd: animation.loopEnd ?? walkLoopEnd,
-                lastX: Number(playerData.x) || 0,
-                lastZ: Number(playerData.z) || 0,
-                movingUntil: 0
-            };
-            updateRemotePlayerTransform(remote, playerData, index);
-            return remote;
         }
 
         function updateRemotePlayerTransform(remote, playerData, index) {
+            ensureRemoteVisual(remote, playerData);
             const team = playerData.team === 'red' ? 'red' : 'blue';
             const fallback = getTeamSpawn(team, index);
             const storedX = Number(playerData.x);
