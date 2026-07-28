@@ -1,0 +1,44 @@
+CARPETA COMPLETA PARA LLEVAR EN ONEDRIVE
+
+Esta carpeta contiene la pagina completa de Brasilia Borderland con Paintball integrado.
+
+Archivo principal de la pagina:
+index.html
+
+Archivo del juego Paintball:
+paintball-firebase.html
+
+Enlaces publicados:
+Pagina principal:
+https://mgamboao63.github.io/diadelcolegio/
+
+Paintball jugador:
+https://mgamboao63.github.io/diadelcolegio/paintball-firebase.html
+
+Paintball juez:
+https://mgamboao63.github.io/diadelcolegio/paintball-firebase.html?modo=juez
+
+Clave juez:
+136101521
+
+ANTES DE PROBAR CON ESTUDIANTES
+1. Abrir Paintball juez.
+2. Entrar con la clave.
+3. Dar Reiniciar.
+4. Pedir a los jugadores que se inscriban.
+5. Dar Iniciar partida.
+
+PARA SUBIR CAMBIOS A GITHUB DESDE ESTA CARPETA
+Abrir PowerShell dentro de esta carpeta y ejecutar:
+
+git add .
+git commit -m "Actualizar Paintball"
+git push origin main
+
+NOTA
+Los avatares pesan bastante:
+character.fbx
+red_character.fbx
+repetidor.glb
+
+Por eso los modelos pueden tardar en aparecer la primera vez. Despues de cargar una vez, el navegador suele guardarlos en cache.
