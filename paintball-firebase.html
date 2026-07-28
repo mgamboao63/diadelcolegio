@@ -1,0 +1,2714 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paintball - Prototipo 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info,
+        #controlsHelp {
+            position: absolute;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, rgba(17, 25, 28, 0.82), rgba(10, 12, 14, 0.64));
+            padding: 11px 13px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 7px;
+            line-height: 1.45;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+            backdrop-filter: blur(4px);
+        }
+
+        #info {
+            top: 10px;
+            left: 10px;
+        }
+
+        #gameStatus {
+            position: absolute;
+            left: 50%;
+            top: 10px;
+            transform: translateX(-50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, rgba(13, 20, 24, 0.86), rgba(17, 26, 30, 0.68));
+            padding: 11px 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            min-width: 320px;
+            text-align: center;
+            pointer-events: none;
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+            backdrop-filter: blur(4px);
+        }
+
+        #controlsHelp {
+            right: 10px;
+            bottom: 10px;
+        }
+
+        #crosshair {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 14px;
+            height: 14px;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(255, 255, 255, 0.88);
+            border-radius: 50%;
+            pointer-events: none;
+            display: none;
+            box-shadow:
+                0 0 0 1px rgba(0, 0, 0, 0.45),
+                0 0 13px rgba(255, 227, 77, 0.42);
+        }
+
+        #aimScope {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 86px;
+            height: 86px;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(145, 230, 255, 0.9);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+            box-shadow:
+                0 0 0 1px rgba(0, 0, 0, 0.45),
+                0 0 18px rgba(91, 205, 255, 0.35);
+        }
+
+        #aimScope::before,
+        #aimScope::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            background: rgba(145, 230, 255, 0.86);
+            transform: translate(-50%, -50%);
+        }
+
+        #aimScope::before {
+            width: 118px;
+            height: 2px;
+        }
+
+        #aimScope::after {
+            width: 2px;
+            height: 118px;
+        }
+
+        body.aiming #crosshair {
+            opacity: 0;
+        }
+
+        body.aiming #aimScope {
+            opacity: 1;
+        }
+
+        #eliminationOverlay {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: white;
+            font: bold 54px Arial, sans-serif;
+            letter-spacing: 0.08em;
+            text-align: center;
+            background: rgba(165, 0, 0, 0.72);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+            z-index: 5;
+        }
+
+        #eliminationOverlay.visible {
+            opacity: 1;
+        }
+
+        #eliminationOverlay.win {
+            background: rgba(15, 96, 190, 0.78);
+        }
+
+        #eliminationOverlay.lose,
+        #eliminationOverlay.hit {
+            background: rgba(165, 0, 0, 0.72);
+        }
+
+        #lobbyPanel {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(7, 12, 14, 0.78);
+            color: white;
+            font-family: Arial, sans-serif;
+            z-index: 4;
+        }
+
+        #lobbyPanel.hidden {
+            display: none;
+        }
+
+        #waitingOverlay {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.18s ease;
+            z-index: 4;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #waitingOverlay.visible {
+            opacity: 1;
+        }
+
+        .waiting-card {
+            width: min(520px, calc(100vw - 32px));
+            padding: 28px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(10, 16, 20, 0.76);
+            box-shadow: 0 18px 55px rgba(0, 0, 0, 0.38);
+            backdrop-filter: blur(5px);
+        }
+
+        .waiting-card strong {
+            display: block;
+            font-size: clamp(38px, 7vw, 72px);
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+
+        .waiting-card span {
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 18px;
+        }
+
+        .lobby-card {
+            width: min(860px, calc(100vw - 32px));
+            background: linear-gradient(135deg, rgba(20, 31, 35, 0.96), rgba(13, 18, 22, 0.94));
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 10px;
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+            padding: 22px;
+        }
+
+        .lobby-title {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .lobby-subtitle {
+            margin-bottom: 14px;
+            color: rgba(255, 255, 255, 0.74);
+        }
+
+        .lobby-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        #lobbyPanel .lobby-tab {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        #lobbyPanel .lobby-tab.active {
+            background: #2f6fed;
+            box-shadow: 0 0 0 2px rgba(128, 179, 255, 0.25);
+        }
+
+        .lobby-view.hidden {
+            display: none;
+        }
+
+        .lobby-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .lobby-section {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .lobby-section h3 {
+            margin: 0 0 10px;
+            font-size: 16px;
+        }
+
+        .lobby-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        #lobbyPanel input,
+        #lobbyPanel select,
+        #lobbyPanel button {
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 6px;
+            padding: 10px 11px;
+            font: inherit;
+        }
+
+        #lobbyPanel input,
+        #lobbyPanel select {
+            min-width: 0;
+            flex: 1;
+            color: white;
+            background: rgba(0, 0, 0, 0.28);
+        }
+
+        #lobbyPanel button {
+            color: white;
+            background: #2f6fed;
+            cursor: pointer;
+        }
+
+        #lobbyPanel button.secondary {
+            background: #49545a;
+        }
+
+        #lobbyMessage,
+        #judgeMessage {
+            min-height: 20px;
+            margin-top: 10px;
+            color: #ffd36a;
+        }
+
+        .team-list {
+            min-height: 112px;
+            margin: 0;
+            padding-left: 0;
+            line-height: 1.7;
+            list-style: none;
+        }
+
+        .team-count {
+            opacity: 0.74;
+            font-size: 13px;
+        }
+
+        .team-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .team-summary-item {
+            border-radius: 8px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .team-summary-item strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .avatar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+            gap: 8px;
+            margin: 10px 0;
+        }
+
+        #lobbyPanel .avatar-choice {
+            display: grid;
+            justify-items: center;
+            gap: 5px;
+            padding: 8px 6px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: white;
+        }
+
+        #lobbyPanel .avatar-choice.selected {
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25);
+            background: rgba(251, 191, 36, 0.14);
+        }
+
+        .avatar-choice img,
+        .roster-avatar {
+            width: 42px;
+            height: 42px;
+            object-fit: contain;
+        }
+
+        .avatar-choice span {
+            font-size: 12px;
+        }
+
+        .roster-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px;
+            margin-bottom: 8px;
+            border-left: 6px solid var(--team-color);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .roster-card b,
+        .roster-card small {
+            display: block;
+        }
+
+        .roster-card small {
+            color: rgba(255, 255, 255, 0.68);
+        }
+
+        @media (max-width: 720px) {
+            .lobby-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .team-summary {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Cargando modelo FBX...</div>
+    <div id="crosshair"></div>
+    <div id="aimScope"></div>
+    <div id="gameStatus"></div>
+    <div id="eliminationOverlay">ELIMINADO</div>
+    <div id="controlsHelp">Primer click: capturar mouse<br>Click: disparar<br>Click derecho: agacharse<br>Espacio: saltar<br>WASD: caminar<br>Shift: correr<br>V: zoom rifle<br>Esc: soltar mouse</div>
+    <div id="waitingOverlay">
+        <div class="waiting-card">
+            <strong>ESPERE AL JUEZ</strong>
+            <span id="waitingText">Jugador inscrito. La partida iniciara cuando el juez de la orden.</span>
+        </div>
+    </div>
+    <div id="lobbyPanel">
+        <div class="lobby-card">
+            <div class="lobby-title">Paintball Borderland</div>
+            <div class="lobby-subtitle">Inscripcion por equipos. El juez inicia cuando todos esten listos.</div>
+            <div class="lobby-tabs">
+                <button id="playersTabButton" class="lobby-tab active" type="button">Jugadores</button>
+                <button id="judgeTabButton" class="lobby-tab" type="button">Juez</button>
+            </div>
+            <div id="playersLobbyView" class="lobby-view">
+                <section class="lobby-section">
+                    <h3>Registro de jugador</h3>
+                    <div class="lobby-row">
+                        <input id="nicknameInput" maxlength="18" placeholder="Nickname">
+                        <select id="teamSelect">
+                            <option value="blue">Azul</option>
+                            <option value="red">Rojo</option>
+                        </select>
+                    </div>
+                    <h3>Avatar</h3>
+                    <div id="avatarGrid" class="avatar-grid"></div>
+                    <button id="joinButton">Inscribir jugador</button>
+                    <div id="lobbyMessage"></div>
+                    <div class="team-summary">
+                        <div class="team-summary-item">
+                            <strong>Equipo azul</strong>
+                            <span id="bluePlayerCount" class="team-count">0/5 inscritos</span>
+                        </div>
+                        <div class="team-summary-item">
+                            <strong>Equipo rojo</strong>
+                            <span id="redPlayerCount" class="team-count">0/5 inscritos</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div id="judgeLobbyView" class="lobby-view hidden">
+                <div class="lobby-grid">
+                <section class="lobby-section">
+                    <h3>Juez</h3>
+                    <div class="lobby-row">
+                        <input id="judgePasswordInput" type="password" placeholder="Contrasena del juez">
+                    </div>
+                    <div class="lobby-row">
+                        <button id="judgeStartButton">Iniciar partida</button>
+                        <button id="judgeResetButton" class="secondary">Reiniciar</button>
+                    </div>
+                    <div id="judgeMessage"></div>
+                </section>
+                <section class="lobby-section">
+                    <h3>Equipo azul <span id="blueCount" class="team-count">0/5</span></h3>
+                    <ol id="blueRoster" class="team-list"></ol>
+                </section>
+                <section class="lobby-section">
+                    <h3>Equipo rojo <span id="redCount" class="team-count">0/5</span></h3>
+                    <ol id="redRoster" class="team-list"></ol>
+                </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+        import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
+        import { getDatabase, ref, onValue, runTransaction, set, update, onDisconnect, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js';
+
+        let scene, camera, renderer, mixer, player, avatar, redAvatar, rifle, walkAction, sharedWalkClip, redWalkClip, aimGuideLine, aimGuidePoint;
+        let leftHandBone, rightHandBone, rifleHandRestCenter;
+        const rifleIKs = [];
+        let idlePoseTime = 0;
+        let walkLoopStart = 0;
+        let walkLoopEnd = 0;
+        let playerIsMoving = false;
+        let sideView = false;
+        let lastShotTime = 0;
+        let isAiming = false;
+        let isCrouching = false;
+        let verticalVelocity = 0;
+        let rifleAimYaw = 0;
+        let rifleAimPitch = 0;
+        let teamsCreated = false;
+        const rifleBasePosition = new THREE.Vector3(8, 120, -53);
+        const rifleBaseRotation = new THREE.Euler(-0.2158, -1.5579, -0.1200);
+        const leftGripLocalPosition = new THREE.Vector3(-0.30, 0.28, 0.06);
+        const rightGripLocalPosition = new THREE.Vector3(0.34, 0.16, -0.14);
+        const rifleMuzzleLocalPosition = new THREE.Vector3(-1.65, 0.08, 0.02);
+        const aimGuideLength = 520;
+        const aimScopeScreenOffset = new THREE.Vector2(-42, 0);
+        const shotAimVerticalOffset = 0.18;
+        let playerCharacterFile = 'red_character.fbx';
+        const enableExternalRifle = true;
+        const enableRifleIK = false;
+        const enableRifleHandFollow = true;
+        const enableBlueAllies = false;
+        const enableRedOpponents = false;
+        const rifleHandFollowStrength = 0.25;
+        const clock = new THREE.Clock();
+        const keys = {};
+        const colliders = [];
+        const paintballs = [];
+        const paintSplats = [];
+        const teamAvatars = [];
+        const registrations = { blue: [], red: [] };
+        const firebaseConfig = {
+            apiKey: 'AIzaSyCnM74qIoBtYY943dChQPYEclRSvUfDu1g',
+            authDomain: 'brasilia-borderland-en-vivo.firebaseapp.com',
+            databaseURL: 'https://brasilia-borderland-en-vivo-default-rtdb.firebaseio.com',
+            projectId: 'brasilia-borderland-en-vivo',
+            appId: '1:1015529796864:web:e89639ee956921f15e2fe5'
+        };
+        const firebaseApp = initializeApp(firebaseConfig);
+        const firebaseAuth = getAuth(firebaseApp);
+        const firebaseDb = getDatabase(firebaseApp);
+        const roomRef = ref(firebaseDb, 'juegos/paintball');
+        let firebaseUid = '';
+        let roomData = { game: { phase: 'lobby', cycle: 0 }, players: {} };
+        let firebaseReady = false;
+        let localPlayerRef = null;
+        let lastRoomCycle = 0;
+        let lastPublishTime = 0;
+        const lobbyAvatars = [
+            { name: 'Rayo', file: 'avatars/rayo.png', color: '#f59e0b' },
+            { name: 'Fenix', file: 'avatars/fenix.png', color: '#ef4444' },
+            { name: 'Tigre', file: 'avatars/tigre.png', color: '#f97316' },
+            { name: 'Halcon', file: 'avatars/halcon.png', color: '#3b82f6' },
+            { name: 'Lobo', file: 'avatars/lobo.png', color: '#64748b' },
+            { name: 'Jaguar', file: 'avatars/jaguar.png', color: '#a16207' },
+            { name: 'Cometa', file: 'avatars/cometa.png', color: '#8b5cf6' },
+            { name: 'Titan', file: 'avatars/titan.png', color: '#0f766e' },
+            { name: 'Nebula', file: 'avatars/nebula.png', color: '#6366f1' },
+            { name: 'Vector', file: 'avatars/vector.png', color: '#06b6d4' }
+        ];
+        const rosterMarkers = [];
+        const blueFlagPosition = new THREE.Vector3();
+        const redFlagPosition = new THREE.Vector3();
+        const maxPlayersPerTeam = 5;
+        const judgePassword = '136101521';
+        const pageMode = new URLSearchParams(window.location.search).get('modo') || 'jugador';
+        let gameState = 'lobby';
+        let playerRegistered = false;
+        let playerNickname = '';
+        let playerTeam = 'red';
+        let selectedLobbyAvatar = 0;
+        let playerHealth = 3;
+        let gameOver = false;
+
+        const moveSpeed = 180;
+        const sprintSpeed = 350;
+        const crouchSpeedMultiplier = 0.52;
+        const jumpSpeed = 540;
+        const gravity = 980;
+        const crouchScaleY = 0.72;
+        const crouchCameraDrop = 34;
+        const crouchRifleDrop = 52;
+        const arenaLimit = 2600;
+        const playerCollisionRadius = 34;
+        const paintballColor = 0x3b244f;
+        const paintballSpeed = 1550;
+        const paintballLife = 1.9;
+        const shotCooldown = 0.11;
+        const rifleAimSensitivity = 0.0018;
+        const rifleAimYawLimit = 0.24;
+        const rifleAimPitchLimit = 0.22;
+        const cameraAimPitchStrength = 0.72;
+        const cameraAimPitchLimit = 0.26;
+        const aimBodyFollow = 1;
+        const normalCameraFov = 60;
+        const aimCameraFov = 18;
+        const cameraOffset = new THREE.Vector3(45, 150, 255);
+        const aimCameraOffset = new THREE.Vector3(10, 150, 34);
+        const lookTargetOffset = new THREE.Vector3(0, 108, 0);
+        const aimLookTargetOffset = new THREE.Vector3(0, 134, -150);
+        const rifleZoomCameraOffset = new THREE.Vector3(58, 145, 54);
+        const rifleZoomLookOffset = new THREE.Vector3(10, 126, -178);
+        const rifleZoomFov = 42;
+        const playerFacingOffset = 0.20;
+
+        let yaw = 0;
+        let pitch = -0.08;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x8fb6cf);
+            scene.fog = new THREE.Fog(0x8fb6cf, 2800, 9000);
+
+            camera = new THREE.PerspectiveCamera(normalCameraFov, window.innerWidth / window.innerHeight, 1, 10000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+            scene.add(ambientLight);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 1.25);
+            sun.position.set(220, 420, 160);
+            sun.castShadow = true;
+            sun.shadow.camera.left = -3500;
+            sun.shadow.camera.right = 3500;
+            sun.shadow.camera.top = 3500;
+            sun.shadow.camera.bottom = -3500;
+            scene.add(sun);
+
+            const sunGlow = new THREE.Mesh(
+                new THREE.SphereGeometry(52, 24, 16),
+                new THREE.MeshBasicMaterial({ color: 0xfff1a8, transparent: true, opacity: 0.72 })
+            );
+            sunGlow.name = 'Sol suave';
+            sunGlow.position.set(-2200, 1350, -2700);
+            scene.add(sunGlow);
+
+            createArena();
+            createPlayer();
+            updateGameStatus('Inscribete y espera la orden del juez.');
+            if (enableRedOpponents) {
+                loadRedCharacter();
+            }
+            setupInput();
+            setupLobby();
+            connectFirebaseRoom();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            const spawnDirection = blueFlagPosition.clone().normalize();
+            const spawnPosition = blueFlagPosition.clone().addScaledVector(spawnDirection, 360);
+            player.position.set(spawnPosition.x, 0, spawnPosition.z);
+            scene.add(player);
+        }
+
+        function setupLobby() {
+            document.getElementById('joinButton').addEventListener('click', registerLobbyPlayer);
+            document.getElementById('judgeStartButton').addEventListener('click', judgeStartGame);
+            document.getElementById('judgeResetButton').addEventListener('click', judgeResetGame);
+            document.getElementById('playersTabButton').addEventListener('click', () => showLobbyTab('players'));
+            document.getElementById('judgeTabButton').addEventListener('click', () => showLobbyTab('judge'));
+            renderAvatarChoices();
+            showLobbyTab(pageMode === 'juez' || pageMode === 'vivo' ? 'judge' : 'players');
+            renderLobby();
+        }
+
+        async function connectFirebaseRoom() {
+            setLobbyMessage('Conectando sala...');
+            try {
+                await signInAnonymously(firebaseAuth);
+                firebaseUid = firebaseAuth.currentUser.uid;
+                firebaseReady = true;
+                localPlayerRef = ref(firebaseDb, `juegos/paintball/players/${firebaseUid}`);
+                onDisconnect(localPlayerRef).remove();
+
+                onValue(roomRef, (snapshot) => {
+                    applyRoomData(snapshot.val() || createEmptyRoom());
+                });
+            } catch (error) {
+                setLobbyMessage(`No se pudo conectar a Firebase: ${error.message}`);
+            }
+        }
+
+        function createEmptyRoom() {
+            return {
+                game: { phase: 'lobby', cycle: 0 },
+                players: {}
+            };
+        }
+
+        function applyRoomData(data) {
+            const previousPhase = roomData.game?.phase || 'lobby';
+            const previousCycle = roomData.game?.cycle || 0;
+            roomData = {
+                game: data.game || { phase: 'lobby', cycle: 0 },
+                players: data.players || {}
+            };
+
+            syncRegistrationsFromRoom();
+            renderLobby();
+            setJudgeMessage(`Conectados: ${getRoomPlayers().length}/10`);
+
+            const currentCycle = roomData.game?.cycle || 0;
+            if (lastRoomCycle && currentCycle !== previousCycle && currentCycle !== lastRoomCycle) {
+                window.location.reload();
+                return;
+            }
+            lastRoomCycle = currentCycle;
+
+            if (playerRegistered && !roomData.players[firebaseUid]) {
+                window.location.reload();
+                return;
+            }
+
+            const phase = roomData.game?.phase || 'lobby';
+            if (!playerRegistered) {
+                gameState = phase;
+            }
+            if (phase === 'running' && playerRegistered && gameState !== 'running') {
+                gameState = 'running';
+                gameOver = false;
+                hideWaitingForJudge();
+                document.getElementById('lobbyPanel')?.classList.add('hidden');
+                updateGameStatus(`Partida iniciada. Jugador: ${playerNickname} (${playerTeam === 'blue' ? 'azul' : 'rojo'}).`);
+            } else if (phase === 'lobby' && previousPhase !== 'lobby') {
+                updateGameStatus('Inscribete y espera la orden del juez.');
+            }
+        }
+
+        function syncRegistrationsFromRoom() {
+            registrations.blue.length = 0;
+            registrations.red.length = 0;
+
+            getRoomPlayers()
+                .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
+                .forEach((playerData) => {
+                    const team = playerData.team === 'red' ? 'red' : 'blue';
+                    registrations[team].push({
+                        nickname: playerData.nickname || 'Jugador',
+                        team,
+                        avatar: Number(playerData.avatar) || 0
+                    });
+                });
+        }
+
+        function getRoomPlayers() {
+            return Object.values(roomData.players || {});
+        }
+
+        function renderAvatarChoices() {
+            const grid = document.getElementById('avatarGrid');
+            if (!grid) return;
+            grid.innerHTML = lobbyAvatars.map((avatarData, index) => `
+                <button class="avatar-choice ${index === selectedLobbyAvatar ? 'selected' : ''}" type="button" data-avatar-index="${index}">
+                    <img src="${avatarData.file}" alt="${avatarData.name}">
+                    <span>${avatarData.name}</span>
+                </button>
+            `).join('');
+
+            grid.querySelectorAll('[data-avatar-index]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    selectedLobbyAvatar = Number(button.dataset.avatarIndex) || 0;
+                    renderAvatarChoices();
+                });
+            });
+        }
+
+        function showLobbyTab(tab) {
+            const playersView = document.getElementById('playersLobbyView');
+            const judgeView = document.getElementById('judgeLobbyView');
+            const playersButton = document.getElementById('playersTabButton');
+            const judgeButton = document.getElementById('judgeTabButton');
+            const showJudge = tab === 'judge';
+
+            playersView.classList.toggle('hidden', showJudge);
+            judgeView.classList.toggle('hidden', !showJudge);
+            playersButton.classList.toggle('active', !showJudge);
+            judgeButton.classList.toggle('active', showJudge);
+        }
+
+        async function registerLobbyPlayer() {
+            if (playerRegistered) {
+                setLobbyMessage('Ya estas inscrito. Espera al juez.');
+                showWaitingForJudge();
+                return;
+            }
+            if (!firebaseReady || !firebaseUid) {
+                setLobbyMessage('La sala todavia se esta conectando. Intenta en un momento.');
+                return;
+            }
+            if (gameState !== 'lobby') {
+                setLobbyMessage('La inscripcion esta cerrada hasta que el juez reinicie.');
+                return;
+            }
+
+            const nicknameInput = document.getElementById('nicknameInput');
+            const teamSelect = document.getElementById('teamSelect');
+            const nickname = nicknameInput.value.trim();
+            const team = teamSelect.value;
+
+            if (!nickname) {
+                setLobbyMessage('Escribe un nickname.');
+                return;
+            }
+
+            setLobbyMessage('Inscribiendo en la sala...');
+            let result;
+            try {
+                result = await runTransaction(roomRef, (room) => {
+                    room = room || createEmptyRoom();
+                    room.game = room.game || { phase: 'lobby', cycle: 0 };
+                    room.players = room.players || {};
+
+                    if (room.game.phase !== 'lobby') return;
+                    if (room.players[firebaseUid]) return room;
+
+                    const players = Object.values(room.players);
+                    const normalizedNickname = nickname.toLowerCase();
+                    const nicknameExists = players.some((playerData) =>
+                        String(playerData.nickname || '').toLowerCase() === normalizedNickname
+                    );
+                    if (nicknameExists) return;
+
+                    const teamCount = players.filter((playerData) => playerData.team === team).length;
+                    if (teamCount >= maxPlayersPerTeam) return;
+
+                    room.players[firebaseUid] = {
+                        uid: firebaseUid,
+                        nickname,
+                        team,
+                        avatar: selectedLobbyAvatar,
+                        health: 3,
+                        alive: true,
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        yaw: 0,
+                        crouching: false,
+                        joinedAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+                    return room;
+                });
+            } catch (error) {
+                setLobbyMessage(`Error de conexion: ${error.message}`);
+                return;
+            }
+
+            if (!result.committed) {
+                setLobbyMessage('No fue posible inscribir: nickname repetido, equipo lleno o partida cerrada.');
+                return;
+            }
+            const savedPlayer = result.snapshot.val()?.players?.[firebaseUid];
+            if (!savedPlayer || savedPlayer.nickname !== nickname || savedPlayer.team !== team) {
+                setLobbyMessage('Esta sesion ya tiene otro jugador inscrito. Usa otra ventana/incognito para probar otro jugador.');
+                return;
+            }
+
+            if (!playerRegistered) {
+                playerRegistered = true;
+                playerNickname = nickname;
+                playerTeam = team;
+                playerCharacterFile = team === 'blue' ? 'character.fbx' : 'red_character.fbx';
+                placePlayerAtTeamSpawn(team);
+                loadCharacter();
+                if (enableExternalRifle) {
+                    loadRifle();
+                }
+                publishLocalPlayerState(true);
+                updateGameStatus(`${nickname} inscrito en equipo ${team === 'blue' ? 'azul' : 'rojo'}. Espera al juez.`);
+            }
+
+            nicknameInput.value = '';
+            setLobbyMessage(`${nickname} inscrito en ${team === 'blue' ? 'azul' : 'rojo'}.`);
+            renderLobby();
+            createRosterMarker(nickname, team, registrations[team].length);
+            lockRegisteredPlayerForm();
+            showWaitingForJudge();
+        }
+
+        function publishLocalPlayerState(force = false) {
+            if (!firebaseReady || !playerRegistered || !localPlayerRef || !player) return;
+
+            const now = performance.now();
+            if (!force && now - lastPublishTime < 95) return;
+            lastPublishTime = now;
+
+            update(localPlayerRef, {
+                x: Number(player.position.x.toFixed(2)),
+                y: Number(player.position.y.toFixed(2)),
+                z: Number(player.position.z.toFixed(2)),
+                yaw: Number(yaw.toFixed(4)),
+                rotationY: Number(player.rotation.y.toFixed(4)),
+                health: playerHealth,
+                alive: !gameOver && player.visible !== false,
+                crouching: isCrouching,
+                updatedAt: serverTimestamp()
+            }).catch(() => {});
+        }
+
+        function lockRegisteredPlayerForm() {
+            const nicknameInput = document.getElementById('nicknameInput');
+            const teamSelect = document.getElementById('teamSelect');
+            const joinButton = document.getElementById('joinButton');
+            const avatarGrid = document.getElementById('avatarGrid');
+
+            if (nicknameInput) {
+                nicknameInput.value = playerNickname;
+                nicknameInput.disabled = true;
+            }
+            if (teamSelect) teamSelect.disabled = true;
+            if (joinButton) {
+                joinButton.disabled = true;
+                joinButton.textContent = 'Jugador inscrito';
+            }
+            if (avatarGrid) {
+                avatarGrid.querySelectorAll('button').forEach((button) => {
+                    button.disabled = true;
+                });
+            }
+        }
+
+        function showWaitingForJudge() {
+            const waitingOverlay = document.getElementById('waitingOverlay');
+            const waitingText = document.getElementById('waitingText');
+            const lobby = document.getElementById('lobbyPanel');
+            if (waitingText) {
+                waitingText.textContent = `${playerNickname} (${playerTeam === 'blue' ? 'equipo azul' : 'equipo rojo'}) esta listo. La partida iniciara cuando el juez de la orden.`;
+            }
+            if (lobby) lobby.classList.add('hidden');
+            if (waitingOverlay) waitingOverlay.classList.add('visible');
+        }
+
+        function hideWaitingForJudge() {
+            const waitingOverlay = document.getElementById('waitingOverlay');
+            if (waitingOverlay) waitingOverlay.classList.remove('visible');
+        }
+
+        function setLobbyMessage(message) {
+            const node = document.getElementById('lobbyMessage');
+            if (node) node.textContent = message;
+        }
+
+        function setJudgeMessage(message) {
+            const node = document.getElementById('judgeMessage');
+            if (node) node.textContent = message;
+        }
+
+        function renderLobby() {
+            renderTeamRoster('blue');
+            renderTeamRoster('red');
+        }
+
+        function renderTeamRoster(team) {
+            const roster = document.getElementById(`${team}Roster`);
+            const count = document.getElementById(`${team}Count`);
+            const playerCount = document.getElementById(`${team}PlayerCount`);
+            if (!roster || !count) return;
+
+            const teamName = team === 'blue' ? 'Azul' : 'Rojo';
+            const teamColor = team === 'blue' ? '#2f6fed' : '#d92828';
+            roster.innerHTML = registrations[team].map((playerData) => {
+                const avatarData = lobbyAvatars[playerData.avatar] || lobbyAvatars[0];
+                return `
+                    <li class="roster-card" style="--team-color:${teamColor}">
+                        <img class="roster-avatar" src="${avatarData.file}" alt="${escapeHtml(avatarData.name)}">
+                        <span>
+                            <b>${escapeHtml(playerData.nickname)}</b>
+                            <small>${teamName} - ${escapeHtml(avatarData.name)}</small>
+                        </span>
+                    </li>
+                `;
+            }).join('');
+            count.textContent = `${registrations[team].length}/${maxPlayersPerTeam}`;
+            if (playerCount) {
+                playerCount.textContent = `${registrations[team].length}/${maxPlayersPerTeam} inscritos`;
+            }
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            }[char]));
+        }
+
+        function placePlayerAtTeamSpawn(team) {
+            const flagPosition = team === 'blue' ? blueFlagPosition : redFlagPosition;
+            const spawnDirection = flagPosition.clone().normalize();
+            const spawnPosition = flagPosition.clone().addScaledVector(spawnDirection, 360);
+            player.position.set(spawnPosition.x, 0, spawnPosition.z);
+            yaw = Math.atan2(-spawnPosition.x, -spawnPosition.z);
+        }
+
+        function createRosterMarker(nickname, team, index) {
+            const flagPosition = team === 'blue' ? blueFlagPosition : redFlagPosition;
+            const color = team === 'blue' ? 0x1e68ff : 0xd92828;
+            const angle = (index / maxPlayersPerTeam) * Math.PI * 2;
+            const radius = 120 + index * 22;
+            const position = flagPosition.clone().add(new THREE.Vector3(Math.sin(angle) * radius, 0, Math.cos(angle) * radius));
+
+            const marker = new THREE.Group();
+            marker.name = `Inscrito ${nickname}`;
+            marker.position.copy(position);
+
+            const base = new THREE.Mesh(
+                new THREE.CylinderGeometry(18, 22, 10, 18),
+                new THREE.MeshStandardMaterial({ color, roughness: 0.55 })
+            );
+            base.position.y = 5;
+            marker.add(base);
+
+            const pin = new THREE.Mesh(
+                new THREE.SphereGeometry(16, 18, 12),
+                new THREE.MeshBasicMaterial({ color })
+            );
+            pin.position.y = 42;
+            marker.add(pin);
+
+            scene.add(marker);
+            rosterMarkers.push(marker);
+        }
+
+        async function judgeStartGame() {
+            if (!validateJudgePassword()) return;
+            if (!getRoomPlayers().length) {
+                setJudgeMessage('Debe existir al menos un jugador inscrito para iniciar.');
+                return;
+            }
+
+            await runTransaction(roomRef, (room) => {
+                room = room || createEmptyRoom();
+                room.game = room.game || { phase: 'lobby', cycle: 0 };
+                room.players = room.players || {};
+                if (!Object.keys(room.players).length || room.game.phase !== 'lobby') return;
+                Object.values(room.players).forEach((playerData) => {
+                    playerData.health = 3;
+                    playerData.alive = true;
+                    playerData.eliminated = false;
+                });
+                room.game.phase = 'running';
+                room.game.startedAt = Date.now();
+                return room;
+            });
+            setJudgeMessage('Partida iniciada.');
+        }
+
+        async function judgeResetGame() {
+            if (!validateJudgePassword()) return;
+            const nextCycle = (roomData.game?.cycle || 0) + 1;
+            await set(roomRef, {
+                game: {
+                    phase: 'lobby',
+                    cycle: nextCycle,
+                    resetAt: Date.now()
+                },
+                players: {}
+            });
+            setJudgeMessage('Sala reiniciada.');
+        }
+
+        function validateJudgePassword() {
+            const input = document.getElementById('judgePasswordInput');
+            if (!input || input.value !== judgePassword) {
+                setJudgeMessage('Contrasena del juez incorrecta.');
+                return false;
+            }
+            setJudgeMessage('');
+            return true;
+        }
+
+        function loadCharacter() {
+            const loader = new FBXLoader();
+            loader.load(
+                playerCharacterFile,
+                (object) => {
+                    avatar = object;
+                    object.scale.set(1, 1, 1);
+                    object.rotation.y = Math.PI;
+
+                    object.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+
+                    if (object.animations && object.animations.length > 0) {
+                        mixer = new THREE.AnimationMixer(object);
+                        sharedWalkClip = makeClipInPlace(object.animations[0]);
+                        walkAction = mixer.clipAction(sharedWalkClip);
+                        walkLoopStart = sharedWalkClip.duration * (1 / 15);
+                        walkLoopEnd = sharedWalkClip.duration * (15 / 15);
+                        idlePoseTime = sharedWalkClip.duration * (9 / 15);
+                        walkAction.play();
+                        walkAction.time = idlePoseTime;
+                        walkAction.weight = 1;
+                        walkAction.timeScale = 0;
+                        mixer.update(0.001);
+                    }
+
+                    player.add(object);
+                    setupRifleHandFollow();
+                    if (enableRifleIK) {
+                        setupRifleIK();
+                    }
+                    tryCreateTeamAvatars();
+                    document.getElementById('info').innerText = 'Listo: click en pantalla, luego WASD para caminar.';
+                },
+                (xhr) => {
+                    const percent = xhr.total ? (xhr.loaded / xhr.total * 100).toFixed(0) : 0;
+                    document.getElementById('info').innerText = `Cargando: ${percent}%`;
+                },
+                (error) => {
+                    console.error('Error al cargar el FBX:', error);
+                    document.getElementById('info').innerText = `Error al cargar ${playerCharacterFile}.`;
+                }
+            );
+        }
+
+        function loadRedCharacter() {
+            const loader = new FBXLoader();
+            loader.load(
+                'red_character.fbx',
+                (object) => {
+                    redAvatar = object;
+                    redAvatar.scale.set(1, 1, 1);
+                    redAvatar.rotation.y = Math.PI;
+                    redAvatar.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    if (redAvatar.animations && redAvatar.animations.length > 0) {
+                        redWalkClip = makeClipInPlace(redAvatar.animations[0]);
+                    } else {
+                        console.warn('red_character.fbx cargo sin animaciones.');
+                    }
+                    tryCreateTeamAvatars();
+                },
+                undefined,
+                (error) => {
+                    console.error('Error al cargar red_character.fbx:', error);
+                    document.getElementById('info').innerText = 'Error al cargar red_character.fbx.';
+                }
+            );
+        }
+
+        function loadRifle() {
+            const loader = new GLTFLoader();
+            loader.load(
+                'repetidor.glb',
+                (gltf) => {
+                    rifle = gltf.scene;
+                    rifle.name = 'Repetidor';
+                    rifle.scale.set(56, 40, 50);
+                    rifle.position.copy(rifleBasePosition);
+                    rifle.rotation.copy(rifleBaseRotation);
+
+                    rifle.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+
+                    player.add(rifle);
+                    createAimGuide();
+                    setupRifleHandFollow();
+                    if (enableRifleIK) {
+                        setupRifleIK();
+                    }
+                    tryCreateTeamAvatars();
+                },
+                undefined,
+                (error) => {
+                    console.error('Error al cargar repetidor.glb:', error);
+                }
+            );
+        }
+
+        function tryCreateTeamAvatars() {
+            if (teamsCreated || !avatar || !rifle) return;
+            if (enableRedOpponents && !redAvatar) return;
+            teamsCreated = true;
+
+            const blueTeam = [
+                [0, 260]
+            ];
+            const redTeam = [
+                [0, 260]
+            ];
+
+            if (enableBlueAllies) {
+                blueTeam.forEach(([offsetX, offsetZ], index) => {
+                    createTeamAvatar(`Aliado ${index + 1}`, 'blue', null, blueFlagPosition.x + offsetX, blueFlagPosition.z + offsetZ);
+                });
+            }
+
+            if (enableRedOpponents) {
+                redTeam.forEach(([offsetX, offsetZ], index) => {
+                    createTeamAvatar(`Rojo ${index + 1}`, 'red', null, redFlagPosition.x + offsetX, redFlagPosition.z + offsetZ);
+                });
+            }
+
+            updateGameStatus();
+        }
+
+        function createTeamAvatar(name, team, teamColor, x, z) {
+            const npc = new THREE.Group();
+            npc.name = name;
+            npc.position.set(x, 0, z);
+            npc.rotation.y = Math.atan2(-z, -x);
+
+            const sourceAvatar = team === 'red' && redAvatar ? redAvatar : avatar;
+            const npcAvatar = SkeletonUtils.clone(sourceAvatar);
+            if (teamColor !== null) {
+                tintAvatarForTeam(npcAvatar, teamColor);
+            }
+            npc.add(npcAvatar);
+            addTeamMarker(npc, team === 'red' ? 0xd92828 : 0x1e68ff);
+
+            const npcRifle = rifle.clone(true);
+            npcRifle.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    if (child.material) {
+                        child.material = child.material.clone();
+                    }
+                }
+            });
+            npc.add(npcRifle);
+
+            scene.add(npc);
+            const npcAnimation = createNpcWalkAnimation(npcAvatar, team);
+
+            teamAvatars.push({
+                group: npc,
+                action: npcAnimation.action,
+                mixer: npcAnimation.mixer,
+                loopStart: npcAnimation.loopStart ?? walkLoopStart,
+                loopEnd: npcAnimation.loopEnd ?? walkLoopEnd,
+                team,
+                health: 3,
+                alive: true,
+                nextShotAt: clock.elapsedTime + 1 + Math.random() * 2
+            });
+        }
+
+        function createNpcWalkAnimation(npcAvatar, team) {
+            const clip = team === 'red' && redWalkClip ? redWalkClip : sharedWalkClip;
+            if (!clip) {
+                return { mixer: null, action: null };
+            }
+
+            const npcMixer = new THREE.AnimationMixer(npcAvatar);
+            const action = npcMixer.clipAction(clip);
+            const loopStart = clip.duration * (1 / 15);
+            const loopEnd = clip.duration * (15 / 15);
+            const npcIdlePoseTime = clip.duration * (9 / 15);
+            action.play();
+            action.time = team === 'red' ? loopStart + Math.random() * Math.max(loopEnd - loopStart, 0.001) : npcIdlePoseTime;
+            action.weight = 1;
+            action.timeScale = team === 'red' ? 0.9 : 0;
+            npcMixer.update(0.001);
+            return { mixer: npcMixer, action, loopStart, loopEnd };
+        }
+
+        function retargetClipToAvatarBones(clip, targetAvatar) {
+            const boneBySuffix = new Map();
+            targetAvatar.traverse((child) => {
+                if (!child.isBone) return;
+                const suffix = getBoneSuffix(child.name);
+                if (!boneBySuffix.has(suffix)) {
+                    boneBySuffix.set(suffix, child.name);
+                }
+            });
+
+            let matchedTracks = 0;
+            const tracks = clip.tracks.map((track) => {
+                const clonedTrack = track.clone();
+                const dotIndex = clonedTrack.name.lastIndexOf('.');
+                if (dotIndex === -1) return clonedTrack;
+
+                const sourceBoneName = clonedTrack.name.slice(0, dotIndex);
+                const propertyName = clonedTrack.name.slice(dotIndex);
+                const targetBoneName = boneBySuffix.get(getBoneSuffix(sourceBoneName));
+
+                if (targetBoneName) {
+                    clonedTrack.name = `${targetBoneName}${propertyName}`;
+                    matchedTracks++;
+                }
+                return clonedTrack;
+            });
+
+            console.info(`Retarget rojo: ${matchedTracks}/${tracks.length} pistas de animacion conectadas.`);
+            return new THREE.AnimationClip(`${clip.name}_retarget_red`, clip.duration, tracks);
+        }
+
+        function getBoneSuffix(name) {
+            const cleanName = name.replace(/^.*:/, '');
+            return cleanName.replace(/[^a-z0-9]/gi, '').toLowerCase();
+        }
+
+        function addTeamMarker(target, color) {
+            const marker = new THREE.Group();
+            marker.name = 'Indicador de equipo';
+            marker.position.set(0, 222, 0);
+
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(18, 18, 12),
+                new THREE.MeshBasicMaterial({ color })
+            );
+            sphere.name = 'Color de equipo';
+            marker.add(sphere);
+
+            target.add(marker);
+        }
+
+        function tintAvatarForTeam(targetAvatar, teamColor) {
+            const color = new THREE.Color(teamColor);
+            targetAvatar.traverse((child) => {
+                if (!child.isMesh || !child.material) return;
+
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                const clonedMaterials = materials.map((material) => {
+                    const cloned = material.clone();
+                    if (cloned.color) {
+                        const base = cloned.color.clone();
+                        const isLikelySkin = base.r > base.g * 1.12 && base.g > base.b * 1.15 && base.r > 0.35;
+                        if (!isLikelySkin) {
+                            cloned.color.copy(color).lerp(base, 0.18);
+                            if (cloned.emissive) {
+                                cloned.emissive.copy(color).multiplyScalar(0.08);
+                            }
+                        }
+                    }
+                    return cloned;
+                });
+
+                child.material = Array.isArray(child.material) ? clonedMaterials : clonedMaterials[0];
+                child.castShadow = true;
+                child.receiveShadow = true;
+            });
+        }
+
+        function setupRifleIK() {
+            if (!avatar || !rifle || rifleIKs.length > 0) return;
+
+            addArmIK('Left', leftGripLocalPosition, 0.36, 3);
+            addArmIK('Right', rightGripLocalPosition, 0.24, 2);
+        }
+
+        function setupRifleHandFollow() {
+            if (!avatar || !rifle || rifleHandRestCenter) return;
+
+            leftHandBone = findAvatarBone(['lefthand']);
+            rightHandBone = findAvatarBone(['righthand']);
+            if (!leftHandBone || !rightHandBone) {
+                console.warn('No encontre manos para seguimiento del rifle.', {
+                    leftHand: leftHandBone?.name,
+                    rightHand: rightHandBone?.name
+                });
+                return;
+            }
+
+            player.updateMatrixWorld(true);
+            rifleHandRestCenter = getHandsCenterInPlayerSpace();
+            console.info('Seguimiento suave de rifle listo:', {
+                leftHand: leftHandBone.name,
+                rightHand: rightHandBone.name
+            });
+        }
+
+        function getHandsCenterInPlayerSpace() {
+            const left = new THREE.Vector3();
+            const right = new THREE.Vector3();
+            leftHandBone.getWorldPosition(left);
+            rightHandBone.getWorldPosition(right);
+
+            const center = left.add(right).multiplyScalar(0.5);
+            player.worldToLocal(center);
+            return center;
+        }
+
+        function applyRifleHandFollow() {
+            if (!enableRifleHandFollow || !rifle || !rifleHandRestCenter || !leftHandBone || !rightHandBone) return;
+
+            const currentCenter = getHandsCenterInPlayerSpace();
+            const handDelta = currentCenter.sub(rifleHandRestCenter).multiplyScalar(rifleHandFollowStrength);
+            const targetPosition = rifleBasePosition.clone().add(handDelta);
+            if (isCrouching) {
+                targetPosition.y -= crouchRifleDrop;
+            }
+            rifle.position.lerp(targetPosition, 0.22);
+        }
+
+        function createAimGuide() {
+            if (aimGuideLine || !rifle) return;
+
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(),
+                new THREE.Vector3()
+            ]);
+            const material = new THREE.LineBasicMaterial({
+                color: 0xffe34d,
+                transparent: true,
+                opacity: 0.65
+            });
+
+            aimGuideLine = new THREE.Line(geometry, material);
+            aimGuideLine.name = 'Mira Guia';
+            scene.add(aimGuideLine);
+
+            const pointMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff3b30,
+                transparent: true,
+                opacity: 0.95
+            });
+            aimGuidePoint = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 16), pointMaterial);
+            aimGuidePoint.name = 'Punto de mira';
+            scene.add(aimGuidePoint);
+        }
+
+        function updateAimGuide() {
+            if (!rifle || !aimGuideLine || !aimGuidePoint) return;
+
+            aimGuideLine.visible = !isAiming;
+            aimGuidePoint.visible = !isAiming;
+
+            const start = getRifleMuzzleWorldPosition();
+            const direction = getRifleShotDirection();
+            const end = start.clone().addScaledVector(direction, aimGuideLength);
+
+            if (isAiming) {
+                updateAimScopePosition(end);
+                return;
+            }
+
+            const positions = aimGuideLine.geometry.attributes.position;
+
+            positions.setXYZ(0, start.x, start.y, start.z);
+            positions.setXYZ(1, end.x, end.y, end.z);
+            positions.needsUpdate = true;
+            aimGuidePoint.position.copy(end);
+        }
+
+        function updateAimScopePosition(worldPoint) {
+            const aimScope = document.getElementById('aimScope');
+            if (!aimScope || !camera) return;
+
+            const screenPoint = worldPoint.clone().project(camera);
+            const x = (screenPoint.x * 0.5 + 0.5) * window.innerWidth + aimScopeScreenOffset.x;
+            const y = (-screenPoint.y * 0.5 + 0.5) * window.innerHeight + aimScopeScreenOffset.y;
+            aimScope.style.left = `${x}px`;
+            aimScope.style.top = `${y}px`;
+        }
+
+        function getRifleMuzzleWorldPosition() {
+            return rifle.localToWorld(rifleMuzzleLocalPosition.clone());
+        }
+
+        function getRifleShotDirection() {
+            const direction = new THREE.Vector3(-1, 0, 0).transformDirection(rifle.matrixWorld);
+            direction.y += shotAimVerticalOffset;
+            if (direction.lengthSq() < 0.0001) {
+                direction.set(0, 0, -1);
+            }
+            return direction.normalize();
+        }
+
+        function addArmIK(side, gripPosition, strength, iterations) {
+            const sideKey = side.toLowerCase();
+            const upperArm = findAvatarBone([`${sideKey}arm`]);
+            const foreArm = findAvatarBone([`${sideKey}forearm`, `${sideKey}lowerarm`]);
+            const hand = findAvatarBone([`${sideKey}hand`]);
+
+            if (!upperArm || !foreArm || !hand) {
+                console.warn(`No encontre todos los huesos para IK ${side}.`, {
+                    upperArm: upperArm?.name,
+                    foreArm: foreArm?.name,
+                    hand: hand?.name
+                });
+                return;
+            }
+
+            const target = new THREE.Object3D();
+            target.name = `${side}HandRifleGrip`;
+            target.position.copy(gripPosition);
+            rifle.add(target);
+
+            rifleIKs.push({
+                target,
+                effector: hand,
+                joints: [foreArm, upperArm],
+                strength,
+                iterations
+            });
+
+            console.info(`IK mano ${side} listo:`, {
+                upperArm: upperArm.name,
+                foreArm: foreArm.name,
+                hand: hand.name
+            });
+        }
+
+        function findAvatarBone(nameParts) {
+            let found = null;
+
+            avatar.traverse((child) => {
+                if (found || !child.isBone) return;
+                const normalizedName = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (nameParts.some((part) => normalizedName.includes(part))) {
+                    found = child;
+                }
+            });
+
+            return found;
+        }
+
+        function applyRifleIK() {
+            for (const ik of rifleIKs) {
+                const targetWorld = new THREE.Vector3();
+                ik.target.getWorldPosition(targetWorld);
+
+                for (let i = 0; i < ik.iterations; i++) {
+                    for (const joint of ik.joints) {
+                        const holdStrength = playerIsMoving ? ik.strength : ik.strength * 1.55;
+                        rotateJointTowardTarget(joint, ik.effector, targetWorld, holdStrength);
+                    }
+                }
+            }
+        }
+
+        function rotateJointTowardTarget(joint, effector, targetWorld, strength) {
+            const jointWorld = new THREE.Vector3();
+            const effectorWorld = new THREE.Vector3();
+            const toEffector = new THREE.Vector3();
+            const toTarget = new THREE.Vector3();
+
+            joint.getWorldPosition(jointWorld);
+            effector.getWorldPosition(effectorWorld);
+
+            toEffector.subVectors(effectorWorld, jointWorld);
+            toTarget.subVectors(targetWorld, jointWorld);
+            if (toEffector.lengthSq() < 0.0001 || toTarget.lengthSq() < 0.0001) return;
+
+            toEffector.normalize();
+            toTarget.normalize();
+
+            const deltaWorld = new THREE.Quaternion().setFromUnitVectors(toEffector, toTarget);
+            const currentWorld = new THREE.Quaternion();
+            const parentWorld = new THREE.Quaternion();
+
+            joint.getWorldQuaternion(currentWorld);
+            const desiredWorld = deltaWorld.multiply(currentWorld);
+
+            if (joint.parent) {
+                joint.parent.getWorldQuaternion(parentWorld).invert();
+                desiredWorld.premultiply(parentWorld);
+            }
+
+            joint.quaternion.slerp(desiredWorld, strength);
+            joint.updateMatrixWorld(true);
+        }
+
+        function makeClipInPlace(clip) {
+            const tracks = clip.tracks.map((track) => {
+                const clonedTrack = track.clone();
+                const trackName = clonedTrack.name.toLowerCase();
+                const isPositionTrack = trackName.endsWith('.position');
+                const isRootPositionTrack =
+                    isPositionTrack &&
+                    (trackName.includes('hips') || trackName.includes('root'));
+
+                if (!isRootPositionTrack) {
+                    return clonedTrack;
+                }
+
+                const values = clonedTrack.values;
+                const startX = values[0];
+                const startZ = values[2];
+
+                for (let i = 0; i < values.length; i += 3) {
+                    values[i] = startX;
+                    values[i + 2] = startZ;
+                }
+
+                smoothTrackLoop(clonedTrack);
+                return clonedTrack;
+            });
+
+            const inPlaceClip = new THREE.AnimationClip(`${clip.name}_in_place`, clip.duration, tracks);
+            inPlaceClip.optimize();
+            return inPlaceClip;
+        }
+
+        function smoothTrackLoop(track) {
+            const valueSize = track.getValueSize();
+            const values = track.values;
+            if (values.length < valueSize * 2) return;
+
+            const lastOffset = values.length - valueSize;
+            for (let i = 0; i < valueSize; i++) {
+                values[lastOffset + i] = values[i];
+            }
+        }
+
+        function setupInput() {
+            window.addEventListener('keydown', (event) => {
+                keys[event.code] = true;
+                if (event.code === 'KeyV' && !event.repeat) {
+                    sideView = !sideView;
+                }
+                if (event.code === 'Space' && !event.repeat) {
+                    tryJump();
+                }
+                if (event.code === 'KeyP' && !event.repeat) {
+                    printRifleTuning();
+                }
+            });
+
+            window.addEventListener('keyup', (event) => {
+                keys[event.code] = false;
+            });
+
+            renderer.domElement.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+            });
+
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                if (document.pointerLockElement !== renderer.domElement) {
+                    renderer.domElement.requestPointerLock();
+                    return;
+                }
+
+                if (event.button === 2) {
+                    isCrouching = true;
+                    return;
+                }
+
+                if (event.button === 0) {
+                    firePaintball();
+                }
+            });
+
+            window.addEventListener('mouseup', (event) => {
+                if (event.button === 2) {
+                    isCrouching = false;
+                    return;
+                }
+            });
+
+            window.addEventListener('mousemove', (event) => {
+                if (document.pointerLockElement !== renderer.domElement) return;
+
+                if (isAiming || sideView) {
+                    rifleAimYaw = THREE.MathUtils.clamp(
+                        rifleAimYaw - event.movementX * rifleAimSensitivity,
+                        -rifleAimYawLimit,
+                        rifleAimYawLimit
+                    );
+                    rifleAimPitch = THREE.MathUtils.clamp(
+                        rifleAimPitch - event.movementY * rifleAimSensitivity,
+                        -rifleAimPitchLimit,
+                        rifleAimPitchLimit
+                    );
+                    return;
+                }
+
+                yaw -= event.movementX * 0.0022;
+                pitch -= event.movementY * 0.0016;
+                pitch = THREE.MathUtils.clamp(pitch, -0.35, 0.35);
+            });
+        }
+
+        function tryJump() {
+            if (!player || gameOver || isCrouching || player.position.y > 0.5) return;
+            verticalVelocity = jumpSpeed;
+        }
+
+        function setAiming(active) {
+            isAiming = active;
+            rifleAimYaw = 0;
+            rifleAimPitch = 0;
+            document.body.classList.toggle('aiming', active);
+        }
+
+        function printRifleTuning() {
+            if (!rifle) {
+                console.info('El rifle todavia no esta cargado.');
+                return;
+            }
+
+            const finalRotation = {
+                x: rifleBaseRotation.x + getTotalAimPitch(),
+                y: rifleBaseRotation.y + rifleAimYaw,
+                z: rifleBaseRotation.z
+            };
+
+            console.info('=== Valores actuales del rifle ===');
+            console.info(`const rifleBasePosition = new THREE.Vector3(${rifleBasePosition.x.toFixed(3)}, ${rifleBasePosition.y.toFixed(3)}, ${rifleBasePosition.z.toFixed(3)});`);
+            console.info(`const rifleBaseRotation = new THREE.Euler(${finalRotation.x.toFixed(4)}, ${finalRotation.y.toFixed(4)}, ${finalRotation.z.toFixed(4)});`);
+            console.info(`Offsets actuales: rifleAimYaw=${rifleAimYaw.toFixed(4)}, rifleAimPitch=${rifleAimPitch.toFixed(4)}`);
+            console.info('Copia las dos lineas const de arriba para dejarlo como defecto.');
+        }
+
+        function createArena() {
+            chooseFlagBases();
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x516f48, roughness: 0.95 });
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000, 200, 200), groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            createGroundDetails();
+            createClouds();
+            createUrbanCover();
+            createBoundaryWalls();
+
+            createFlagCover(blueFlagPosition, 0x1e68ff);
+            createFlagCover(redFlagPosition, 0xd92828);
+            createBaseZone(blueFlagPosition, 0x1e68ff, 'Base azul');
+            createBaseZone(redFlagPosition, 0xd92828, 'Base roja');
+            createTeamFlag('Bandera Azul', blueFlagPosition.x, blueFlagPosition.z, 0x1e68ff);
+            createTeamFlag('Bandera Roja', redFlagPosition.x, redFlagPosition.z, 0xd92828);
+        }
+
+        function chooseFlagBases() {
+            const radius = 2380;
+            const angle = Math.floor(Math.random() * 4) * (Math.PI / 2) + Math.PI / 4;
+            blueFlagPosition.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+            redFlagPosition.copy(blueFlagPosition).multiplyScalar(-1);
+        }
+
+        function createMountainRing() {
+            const mountainMaterial = new THREE.MeshStandardMaterial({ color: 0x586b5a, roughness: 1 });
+            const snowMaterial = new THREE.MeshStandardMaterial({ color: 0xd8e5e8, roughness: 0.8 });
+
+            for (let i = 0; i < 18; i++) {
+                const angle = (i / 18) * Math.PI * 2;
+                const radius = 3400 + Math.sin(i * 3.1) * 350;
+                const height = 130 + (i % 5) * 32;
+                const base = 130 + (i % 4) * 35;
+
+                const mountain = new THREE.Mesh(new THREE.ConeGeometry(base, height, 7), mountainMaterial);
+                mountain.position.set(Math.sin(angle) * radius, height / 2 - 18, Math.cos(angle) * radius);
+                mountain.rotation.y = angle;
+                mountain.castShadow = true;
+                mountain.receiveShadow = true;
+                scene.add(mountain);
+
+                const cap = new THREE.Mesh(new THREE.ConeGeometry(base * 0.42, height * 0.28, 7), snowMaterial);
+                cap.position.set(mountain.position.x, height - 12, mountain.position.z);
+                cap.rotation.y = angle;
+                cap.castShadow = true;
+                scene.add(cap);
+            }
+        }
+
+        function createUrbanCover() {
+            const boardBunkers = [
+                [-450, -300, 0.35], [420, -260, -0.25], [-950, 960, 1.35], [950, 900, -1.1],
+                [-1320, -920, -0.85], [1370, -980, 0.75], [-220, 1350, 0.05], [260, -1320, 1.55],
+                [-1750, -250, 1.1], [1740, 210, -1.2], [-2050, 960, -0.3], [2040, -1250, 0.2],
+                [-1040, 2060, 1.45], [1120, 2180, -1.35], [-2450, -760, 0.65], [2480, 730, -0.75],
+                [-340, -2080, -0.55], [520, 2360, 0.58], [-2300, -2180, 1.1], [2250, 2300, -1.05],
+                [-1550, 520, -1.52], [1510, 1480, 1.45], [-720, -1680, 0.95], [880, -420, -0.85]
+            ];
+
+            boardBunkers.forEach(([x, z, rotation], index) => {
+                const length = index % 3 === 0 ? 190 : 145;
+                const height = index % 4 === 0 ? 190 : 165;
+                createBoardBunker(`Tabla ${index + 1}`, x, z, rotation, length, height, 12);
+            });
+
+            const inflatableBunkers = [
+                [-1180, 280, 0x2f64bb, 0.15], [1260, -320, 0xce3f39, -0.25],
+                [-620, -1180, 0xf2c94c, Math.PI / 2], [820, 1220, 0x23a6d5, Math.PI / 2],
+                [-1820, -1520, 0xf05a28, 0.55], [1820, 1540, 0x6fcf97, -0.45],
+                [40, 1740, 0xe056fd, 0], [-80, -1760, 0xff7a45, 0]
+            ];
+
+            inflatableBunkers.forEach(([x, z, color, rotation]) => {
+                createInflatableBunker(x, 18, z, color, rotation);
+            });
+
+            createLowJumpObstacles();
+        }
+
+        function createLowJumpObstacles() {
+            const logs = [
+                [-360, 640, 0.2], [620, 720, -0.5], [-980, -620, 0.9], [1180, -1120, -0.2],
+                [-1760, 1180, 1.25], [1720, 560, -1.05], [320, -620, 0.35], [-1480, -1680, -0.8]
+            ];
+            logs.forEach(([x, z, rotation], index) => {
+                createLogObstacle(`Tronco ${index + 1}`, x, z, rotation);
+            });
+
+            const rocks = [
+                [-680, 120, 1.0], [740, -40, 0.85], [-1380, 380, 1.25], [1390, -720, 0.95],
+                [-180, 1120, 0.75], [1120, 1560, 1.12], [-2140, -260, 0.9], [2060, -1580, 1.05],
+                [0, -1240, 0.82], [-860, 1780, 1.0]
+            ];
+            rocks.forEach(([x, z, scale], index) => {
+                createRockObstacle(`Piedra ${index + 1}`, x, z, scale);
+            });
+        }
+
+        function createGroundDetails() {
+            const patchColors = [0x48683e, 0x5a7245, 0x6b613e, 0x3f5a38, 0x796d48, 0x2f4f32, 0x8b744d];
+            const patchMaterialCache = new Map();
+
+            for (let i = 0; i < 240; i++) {
+                const color = patchColors[i % patchColors.length];
+                if (!patchMaterialCache.has(color)) {
+                    patchMaterialCache.set(color, new THREE.MeshBasicMaterial({
+                        color,
+                        transparent: true,
+                        opacity: i % 5 === 0 ? 0.24 : 0.16,
+                        depthWrite: false
+                    }));
+                }
+
+                const patch = new THREE.Mesh(
+                    new THREE.CircleGeometry(38 + (i % 9) * 18, 18),
+                    patchMaterialCache.get(color)
+                );
+                const x = Math.sin(i * 17.41) * 2550 + Math.cos(i * 3.7) * 260;
+                const z = Math.cos(i * 13.19) * 2550 + Math.sin(i * 2.9) * 260;
+                patch.name = 'Detalle de terreno';
+                patch.position.set(x, 0.045 + (i % 4) * 0.006, z);
+                patch.rotation.x = -Math.PI / 2;
+                patch.rotation.z = i * 0.73;
+                patch.scale.set(1.35 + (i % 7) * 0.22, 0.46 + (i % 5) * 0.15, 1);
+                scene.add(patch);
+            }
+
+            const bladeMaterial = new THREE.MeshBasicMaterial({
+                color: 0x274629,
+                transparent: true,
+                opacity: 0.28,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            for (let i = 0; i < 360; i++) {
+                const blade = new THREE.Mesh(new THREE.PlaneGeometry(4, 18 + (i % 5) * 4), bladeMaterial);
+                const x = Math.sin(i * 21.73) * 2520 + Math.cos(i * 4.31) * 310;
+                const z = Math.cos(i * 18.11) * 2520 + Math.sin(i * 5.17) * 310;
+                blade.name = 'Pasto bajo';
+                blade.position.set(x, 8, z);
+                blade.rotation.y = i * 0.91;
+                blade.rotation.z = Math.sin(i) * 0.25;
+                scene.add(blade);
+            }
+        }
+
+        function createBaseZone(flagPosition, color, name) {
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(96, 150, 42),
+                new THREE.MeshBasicMaterial({
+                    color,
+                    transparent: true,
+                    opacity: 0.42,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                })
+            );
+            ring.name = name;
+            ring.position.set(flagPosition.x, 0.09, flagPosition.z);
+            ring.rotation.x = -Math.PI / 2;
+            scene.add(ring);
+
+            const platform = new THREE.Mesh(
+                new THREE.CylinderGeometry(82, 96, 8, 36),
+                new THREE.MeshStandardMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0x202525), 0.36), roughness: 0.72 })
+            );
+            platform.name = `${name} plataforma`;
+            platform.position.set(flagPosition.x, 4, flagPosition.z);
+            platform.receiveShadow = true;
+            scene.add(platform);
+        }
+
+        function createClouds() {
+            const cloudMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.95,
+                transparent: true,
+                opacity: 0.9
+            });
+
+            const cloudPositions = [
+                [-2100, 720, -1750], [-1150, 820, 1450], [250, 760, -2100], [1450, 840, -900],
+                [2200, 780, 1500], [-2450, 880, 620], [760, 900, 2250], [-420, 700, 420]
+            ];
+
+            cloudPositions.forEach(([x, y, z], index) => {
+                const cloud = new THREE.Group();
+                cloud.name = `Nube ${index + 1}`;
+                cloud.position.set(x, y, z);
+
+                const puffCount = 4 + (index % 3);
+                for (let i = 0; i < puffCount; i++) {
+                    const puff = new THREE.Mesh(
+                        new THREE.SphereGeometry(65 + (i % 2) * 22, 18, 12),
+                        cloudMaterial
+                    );
+                    puff.position.set((i - puffCount / 2) * 72, Math.sin(i * 1.7) * 18, Math.cos(i * 0.9) * 34);
+                    puff.scale.set(1.45, 0.45, 0.72);
+                    cloud.add(puff);
+                }
+
+                scene.add(cloud);
+            });
+        }
+
+        function createBoundaryWalls() {
+            const wallMaterial = new THREE.MeshStandardMaterial({
+                color: 0x34423d,
+                roughness: 0.88,
+                transparent: true,
+                opacity: 0.82
+            });
+            const postMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1f2927,
+                roughness: 0.86
+            });
+            const wallHeight = 185;
+            const wallThickness = 42;
+            const wallLength = arenaLimit * 2 + wallThickness;
+            const wallDistance = arenaLimit + wallThickness / 2;
+
+            const walls = [
+                ['Pared norte', 0, wallHeight / 2, -wallDistance, wallLength, wallHeight, wallThickness, 0],
+                ['Pared sur', 0, wallHeight / 2, wallDistance, wallLength, wallHeight, wallThickness, 0],
+                ['Pared oeste', -wallDistance, wallHeight / 2, 0, wallLength, wallHeight, wallThickness, Math.PI / 2],
+                ['Pared este', wallDistance, wallHeight / 2, 0, wallLength, wallHeight, wallThickness, Math.PI / 2]
+            ];
+
+            walls.forEach(([name, x, y, z, width, height, depth, rotation]) => {
+                const wall = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), wallMaterial);
+                wall.name = name;
+                wall.position.set(x, y, z);
+                wall.rotation.y = rotation;
+                wall.castShadow = true;
+                wall.receiveShadow = true;
+                scene.add(wall);
+                addBoxCollider(x, z, width, depth, rotation);
+            });
+
+            for (let side = 0; side < 4; side++) {
+                for (let i = -arenaLimit; i <= arenaLimit; i += 420) {
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(18, wallHeight + 42, 18), postMaterial);
+                    if (side < 2) {
+                        post.position.set(i, (wallHeight + 42) / 2, side === 0 ? -wallDistance : wallDistance);
+                    } else {
+                        post.position.set(side === 2 ? -wallDistance : wallDistance, (wallHeight + 42) / 2, i);
+                    }
+                    post.castShadow = true;
+                    scene.add(post);
+                }
+            }
+        }
+
+        function createBuilding(name, x, z, width, height, depth, color) {
+            const wallMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+            const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x303733, roughness: 0.85 });
+            const building = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), wallMaterial);
+            building.name = name;
+            building.position.set(x, height / 2, z);
+            building.castShadow = true;
+            building.receiveShadow = true;
+            scene.add(building);
+
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(width + 18, 16, depth + 18), roofMaterial);
+            roof.name = `${name} Techo`;
+            roof.position.set(x, height + 8, z);
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            scene.add(roof);
+
+            addBoxCollider(x, z, width + 18, depth + 18, 0);
+        }
+
+        function createBoardBunker(name, x, z, rotation, length, height, thickness) {
+            const board = new THREE.Group();
+            board.name = name;
+            board.position.set(x, height / 2, z);
+            board.rotation.y = rotation;
+            scene.add(board);
+
+            const material = new THREE.MeshStandardMaterial({ color: 0x8a6a43, roughness: 0.82 });
+            const slatCount = 5;
+            for (let i = 0; i < slatCount; i++) {
+                const slat = new THREE.Mesh(new THREE.BoxGeometry(length, height / slatCount - 3, thickness), material.clone());
+                slat.material.color.offsetHSL(0, 0, (i % 2 === 0 ? 0.04 : -0.04));
+                slat.position.y = -height / 2 + (i + 0.5) * (height / slatCount);
+                slat.position.z = (i % 2) * 2;
+                slat.castShadow = true;
+                slat.receiveShadow = true;
+                board.add(slat);
+            }
+
+            const postMaterial = new THREE.MeshStandardMaterial({ color: 0x5a412b, roughness: 0.9 });
+            [-0.42, 0.42].forEach((side) => {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(10, height + 18, 10), postMaterial);
+                post.position.set(side * length, 0, 0);
+                board.add(post);
+                post.position.y = 0;
+            });
+
+            addPaintMark(board, -length * 0.18, height * 0.12, thickness / 2 + 1, 0xd92828, 18);
+            addPaintMark(board, length * 0.22, -height * 0.08, thickness / 2 + 1, 0x1e68ff, 15);
+
+            addBoxCollider(x, z, length, thickness + 16, rotation);
+        }
+
+        function createObstacle(name, x, y, z, width, height, depth, color) {
+            const material = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
+            const box = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+            box.name = `Obstaculo ${name}`;
+            box.position.set(x, y, z);
+            box.castShadow = true;
+            box.receiveShadow = true;
+            scene.add(box);
+            addBoxCollider(x, z, width, depth, 0);
+        }
+
+        function createLogObstacle(name, x, z, rotation) {
+            const logMaterial = new THREE.MeshStandardMaterial({ color: 0x6b4b2d, roughness: 0.88 });
+            const barkMaterial = new THREE.MeshStandardMaterial({ color: 0x3d2a1c, roughness: 0.95 });
+            const log = new THREE.Group();
+            log.name = name;
+            log.position.set(x, 27, z);
+            log.rotation.y = rotation;
+
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(22, 25, 185, 18), logMaterial);
+            body.rotation.z = Math.PI / 2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            log.add(body);
+
+            [-96, 96].forEach((side) => {
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(23, 23, 6, 18), barkMaterial);
+                cap.position.x = side;
+                cap.rotation.z = Math.PI / 2;
+                cap.castShadow = true;
+                log.add(cap);
+            });
+
+            scene.add(log);
+            addBoxCollider(x, z, 245, 96, rotation, 82);
+        }
+
+        function createRockObstacle(name, x, z, scale) {
+            const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x777a70, roughness: 0.96 });
+            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(36 * scale, 0), rockMaterial);
+            rock.name = name;
+            rock.position.set(x, 23 * scale, z);
+            rock.rotation.set(scale * 0.6, scale * 1.7, scale * 0.3);
+            rock.scale.set(1.35, 0.68, 1.05);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            scene.add(rock);
+            addBoxCollider(x, z, 118 * scale, 104 * scale, 0, 78 * scale);
+        }
+
+        function addPaintMark(parent, x, y, z, color, radius) {
+            const splat = new THREE.Mesh(
+                new THREE.CircleGeometry(radius, 14),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82, side: THREE.DoubleSide })
+            );
+            splat.name = 'Mancha decorativa';
+            splat.position.set(x, y, z);
+            splat.rotation.x = 0;
+            parent.add(splat);
+        }
+
+        function createInflatableBunker(x, y, z, color, rotation = 0) {
+            const material = new THREE.MeshStandardMaterial({
+                color,
+                roughness: 0.42,
+                metalness: 0.02
+            });
+            const bunker = new THREE.Group();
+            bunker.name = 'Bunker inflable';
+            bunker.position.set(x, y + 42, z);
+            bunker.rotation.y = rotation;
+
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(46, 230, 12, 28), material);
+            body.name = 'Cuerpo inflable';
+            body.rotation.z = Math.PI / 2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            bunker.add(body);
+
+            const stripeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xf7f2df,
+                roughness: 0.5,
+                transparent: true,
+                opacity: 0.92
+            });
+            [-78, 78].forEach((offset) => {
+                const stripe = new THREE.Mesh(new THREE.TorusGeometry(47, 5, 10, 28), stripeMaterial);
+                stripe.name = 'Banda inflable';
+                stripe.position.x = offset;
+                stripe.rotation.y = Math.PI / 2;
+                bunker.add(stripe);
+            });
+
+            addPaintMark(bunker, -18, 34, 47, 0xffffff, 20);
+            addPaintMark(bunker, 46, -16, 48, 0x3b244f, 16);
+
+            scene.add(bunker);
+            addBoxCollider(x, z, 310, 112, rotation);
+        }
+
+        function createTeamFlag(name, x, z, color) {
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(5, 5, 165, 16),
+                new THREE.MeshStandardMaterial({ color: 0xd9d2b8, roughness: 0.55 })
+            );
+            pole.name = `${name} Asta`;
+            pole.position.set(x, 82.5, z);
+            pole.castShadow = true;
+            scene.add(pole);
+
+            const flag = new THREE.Mesh(
+                new THREE.BoxGeometry(76, 46, 4),
+                new THREE.MeshStandardMaterial({ color, roughness: 0.45 })
+            );
+            flag.name = name;
+            flag.position.set(x + 42, 138, z);
+            flag.castShadow = true;
+            scene.add(flag);
+
+            const base = new THREE.Mesh(
+                new THREE.CylinderGeometry(24, 30, 12, 24),
+                new THREE.MeshStandardMaterial({ color: 0x343a35, roughness: 0.8 })
+            );
+            base.name = `${name} Base`;
+            base.position.set(x, 6, z);
+            base.receiveShadow = true;
+            scene.add(base);
+
+        }
+
+        function createFlagCover(flagPosition, color) {
+            const towardCenter = new THREE.Vector3(-flagPosition.x, 0, -flagPosition.z).normalize();
+            const coverPosition = flagPosition.clone().addScaledVector(towardCenter, 155);
+            const rotation = Math.atan2(towardCenter.x, towardCenter.z);
+
+            const material = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(color).lerp(new THREE.Color(0x2f332f), 0.58),
+                roughness: 0.82
+            });
+            const cover = new THREE.Mesh(new THREE.BoxGeometry(250, 140, 24), material);
+            cover.name = 'Cobertura de bandera';
+            cover.position.set(coverPosition.x, 70, coverPosition.z);
+            cover.rotation.y = rotation;
+            cover.castShadow = true;
+            cover.receiveShadow = true;
+            scene.add(cover);
+
+            addBoxCollider(coverPosition.x, coverPosition.z, 250, 24, rotation);
+        }
+
+        function addBoxCollider(x, z, width, depth, rotation, height = Infinity) {
+            colliders.push({
+                center: new THREE.Vector2(x, z),
+                half: new THREE.Vector2(width / 2, depth / 2),
+                height,
+                rotation,
+                cos: Math.cos(-rotation),
+                sin: Math.sin(-rotation)
+            });
+        }
+
+        function getHitCollider(position, radius = playerCollisionRadius, ignoredColliders = []) {
+            const point = new THREE.Vector2(position.x, position.z);
+            return colliders.find((collider) => {
+                if (ignoredColliders.includes(collider)) {
+                    return false;
+                }
+                if (Number.isFinite(collider.height) && position.y > collider.height + radius * 0.65) {
+                    return false;
+                }
+
+                const dx = point.x - collider.center.x;
+                const dz = point.y - collider.center.y;
+                const localX = dx * collider.cos - dz * collider.sin;
+                const localZ = dx * collider.sin + dz * collider.cos;
+                return Math.abs(localX) <= collider.half.x + radius &&
+                    Math.abs(localZ) <= collider.half.y + radius;
+            }) || null;
+        }
+
+        function getOverlappedLowColliders(position, radius = playerCollisionRadius) {
+            return colliders.filter((collider) =>
+                Number.isFinite(collider.height) &&
+                getHitCollider(position, radius, colliders.filter((other) => other !== collider)) === collider
+            );
+        }
+
+        function isBlockedPosition(position, radius = playerCollisionRadius, ignoredColliders = []) {
+            return getHitCollider(position, radius, ignoredColliders) !== null;
+        }
+
+        function movePlayerWithCollision(displacement) {
+            const maxStep = 18;
+            const steps = Math.max(1, Math.ceil(displacement.length() / maxStep));
+            if (steps > 1) {
+                const step = displacement.clone().divideScalar(steps);
+                for (let i = 0; i < steps; i++) {
+                    movePlayerWithCollision(step);
+                }
+                return;
+            }
+
+            const current = player.position.clone();
+            const next = current.clone().add(displacement);
+            const escapeColliders = getOverlappedLowColliders(current);
+
+            if (!isBlockedPosition(next, playerCollisionRadius, escapeColliders)) {
+                player.position.copy(next);
+                return;
+            }
+
+            const xOnly = current.clone();
+            xOnly.x += displacement.x;
+            if (!isBlockedPosition(xOnly, playerCollisionRadius, escapeColliders)) {
+                player.position.copy(xOnly);
+            }
+
+            const zOnly = player.position.clone();
+            zOnly.z += displacement.z;
+            if (!isBlockedPosition(zOnly, playerCollisionRadius, escapeColliders)) {
+                player.position.copy(zOnly);
+            }
+        }
+
+        function getMovementVector() {
+            const input = new THREE.Vector3();
+            if (keys.KeyW || keys.ArrowUp) input.z -= 1;
+            if (keys.KeyS || keys.ArrowDown) input.z += 1;
+            if (keys.KeyA || keys.ArrowLeft) input.x -= 1;
+            if (keys.KeyD || keys.ArrowRight) input.x += 1;
+
+            if (input.lengthSq() > 0) input.normalize();
+            input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            return input;
+        }
+
+        function updatePlayer(delta) {
+            if (!player || gameOver) return;
+
+            updateVerticalMovement(delta);
+            updateCrouchPose(delta);
+
+            if (gameState !== 'running') {
+                return;
+            }
+
+            const movement = getMovementVector();
+            const isMoving = movement.lengthSq() > 0.001;
+            playerIsMoving = isMoving;
+            let speed = keys.ShiftLeft || keys.ShiftRight ? sprintSpeed : moveSpeed;
+            if (isCrouching) {
+                speed *= crouchSpeedMultiplier;
+            }
+
+            if (isMoving) {
+                movePlayerWithCollision(movement.multiplyScalar(speed * delta));
+                player.position.x = THREE.MathUtils.clamp(player.position.x, -arenaLimit, arenaLimit);
+                player.position.z = THREE.MathUtils.clamp(player.position.z, -arenaLimit, arenaLimit);
+
+            }
+
+            const aimBodyYaw = (isAiming || sideView) ? rifleAimYaw * aimBodyFollow : 0;
+            player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, yaw + playerFacingOffset + aimBodyYaw, 12 * delta);
+
+            if (walkAction) {
+                if (isMoving && walkAction.timeScale === 0) {
+                    walkAction.time = clampWalkTime(walkAction.time);
+                } else if (!isMoving && walkAction.timeScale !== 0) {
+                    walkAction.time = idlePoseTime;
+                }
+                walkAction.timeScale = isMoving ? (keys.ShiftLeft || keys.ShiftRight ? 1.25 : 0.9) : 0;
+            }
+
+            if (enableExternalRifle) {
+                updateRifleMotion(isMoving);
+            }
+
+            const targetFlag = playerTeam === 'blue' ? redFlagPosition : blueFlagPosition;
+            const targetFlagName = playerTeam === 'blue' ? 'roja' : 'azul';
+            if (distanceXZ(player.position, targetFlag) < 88) {
+                endGame(`Ganaste: capturaste la bandera ${targetFlagName}.`, 'win');
+            }
+        }
+
+        function updateVerticalMovement(delta) {
+            verticalVelocity -= gravity * delta;
+            player.position.y += verticalVelocity * delta;
+
+            if (player.position.y <= 0) {
+                player.position.y = 0;
+                verticalVelocity = 0;
+            }
+        }
+
+        function updateCrouchPose(delta) {
+            if (!avatar) return;
+
+            const targetScaleY = isCrouching ? crouchScaleY : 1;
+            avatar.scale.y = THREE.MathUtils.lerp(avatar.scale.y, targetScaleY, 13 * delta);
+            avatar.position.y = THREE.MathUtils.lerp(avatar.position.y, isCrouching ? -8 : 0, 12 * delta);
+        }
+
+        function firePaintball() {
+            if (!rifle || gameOver || gameState !== 'running') return;
+
+            const now = clock.elapsedTime;
+            if (now - lastShotTime < shotCooldown) return;
+            lastShotTime = now;
+
+            const start = getRifleMuzzleWorldPosition();
+            const direction = getRifleShotDirection();
+            spawnPaintball(start, direction, paintballColor, 'blue');
+        }
+
+        function spawnPaintball(start, direction, color, team) {
+            const material = new THREE.MeshStandardMaterial({
+                color,
+                emissive: color,
+                emissiveIntensity: 0.35,
+                roughness: 0.35
+            });
+            const ball = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 16), material);
+            ball.name = 'Bola de pintura';
+            ball.position.copy(start);
+            ball.castShadow = true;
+            scene.add(ball);
+
+            paintballs.push({
+                mesh: ball,
+                velocity: direction.clone().normalize().multiplyScalar(paintballSpeed),
+                life: paintballLife,
+                team
+            });
+        }
+
+        function updatePaintballs(delta) {
+            for (let i = paintballs.length - 1; i >= 0; i--) {
+                const shot = paintballs[i];
+                shot.life -= delta;
+                shot.mesh.position.addScaledVector(shot.velocity, delta);
+
+                const outOfArena = Math.abs(shot.mesh.position.x) > arenaLimit + 400 ||
+                    Math.abs(shot.mesh.position.z) > arenaLimit + 400 ||
+                    shot.mesh.position.y < 3;
+                const hitCollider = getHitCollider(shot.mesh.position, 7);
+                const hitCover = hitCollider !== null;
+                const hitAvatar = handlePaintballAvatarHit(shot);
+                const hitGround = shot.mesh.position.y < 8;
+
+                if (hitCover || hitGround) {
+                    createPaintSplat(shot.mesh.position, shot.mesh.material.color, hitCollider);
+                }
+
+                if (shot.life <= 0 || outOfArena || hitCover || hitGround || hitAvatar) {
+                    scene.remove(shot.mesh);
+                    shot.mesh.geometry.dispose();
+                    shot.mesh.material.dispose();
+                    paintballs.splice(i, 1);
+                }
+            }
+        }
+
+        function updateOpponentFire() {
+            if (!player || gameOver) return;
+
+            const now = clock.elapsedTime;
+            teamAvatars.forEach((npc) => {
+                if (!npc.alive || npc.team !== 'red' || now < npc.nextShotAt) return;
+
+                const distanceToPlayer = distanceXZ(npc.group.position, player.position);
+                if (distanceToPlayer > 1900) {
+                    npc.nextShotAt = now + 1.2;
+                    return;
+                }
+
+                npc.group.lookAt(player.position.x, 0, player.position.z);
+                const start = npc.group.position.clone().add(new THREE.Vector3(0, 118, 0));
+                const target = player.position.clone().add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 90,
+                    105 + (Math.random() - 0.5) * 45,
+                    (Math.random() - 0.5) * 90
+                ));
+                const direction = target.sub(start).normalize();
+                spawnPaintball(start, direction, 0xd92828, 'red');
+                npc.nextShotAt = now + 1.4 + Math.random() * 1.1;
+            });
+        }
+
+        function updateTeamAnimations(delta) {
+            teamAvatars.forEach((npc) => {
+                if (!npc.mixer || !npc.action) return;
+
+                npc.action.timeScale = npc.alive && npc.team === 'red' ? 0.9 : 0;
+                npc.mixer.update(delta);
+
+                if (npc.action.time >= npc.loopEnd) {
+                    const loopLength = Math.max(npc.loopEnd - npc.loopStart, 0.001);
+                    npc.action.time = npc.loopStart + ((npc.action.time - npc.loopStart) % loopLength);
+                } else if (npc.action.time < npc.loopStart) {
+                    npc.action.time = npc.loopStart;
+                }
+            });
+        }
+
+        function createPaintSplat(position, color, collider = null) {
+            const splatColor = color instanceof THREE.Color ? color.getHex() : color;
+            const material = new THREE.MeshBasicMaterial({
+                color: splatColor,
+                transparent: true,
+                opacity: 0.74,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const splat = new THREE.Mesh(new THREE.CircleGeometry(13 + Math.random() * 10, 12), material);
+            splat.name = 'Mancha de pintura';
+
+            if (collider) {
+                const dx = position.x - collider.center.x;
+                const dz = position.z - collider.center.y;
+                const localX = dx * collider.cos - dz * collider.sin;
+                const localZ = dx * collider.sin + dz * collider.cos;
+                const hitOnWideSide = Math.abs(localZ / Math.max(collider.half.y, 1)) > Math.abs(localX / Math.max(collider.half.x, 1));
+                const side = hitOnWideSide ? Math.sign(localZ || 1) : Math.sign(localX || 1);
+                const localHit = new THREE.Vector2(
+                    hitOnWideSide ? THREE.MathUtils.clamp(localX, -collider.half.x + 10, collider.half.x - 10) : side * (collider.half.x + 0.8),
+                    hitOnWideSide ? side * (collider.half.y + 0.8) : THREE.MathUtils.clamp(localZ, -collider.half.y + 10, collider.half.y - 10)
+                );
+                const worldX = collider.center.x + localHit.x * collider.cos + localHit.y * collider.sin;
+                const worldZ = collider.center.y - localHit.x * collider.sin + localHit.y * collider.cos;
+                splat.position.set(worldX, THREE.MathUtils.clamp(position.y, 24, 145), worldZ);
+                splat.rotation.y = collider.rotation + (hitOnWideSide ? 0 : Math.PI / 2);
+                splat.rotation.x = 0;
+            } else {
+                splat.position.set(position.x, 0.12, position.z);
+                splat.rotation.x = -Math.PI / 2;
+            }
+
+            splat.rotation.z = Math.random() * Math.PI * 2;
+            splat.scale.set(1.55, 0.9, 1);
+            scene.add(splat);
+            paintSplats.push(splat);
+
+            if (paintSplats.length > 140) {
+                const oldest = paintSplats.shift();
+                scene.remove(oldest);
+                oldest.geometry.dispose();
+                oldest.material.dispose();
+            }
+        }
+
+        function countAliveTeam(team) {
+            return teamAvatars.filter((npc) => npc.team === team && npc.alive).length;
+        }
+
+        function updateGameStatus(message = '') {
+            const status = document.getElementById('gameStatus');
+            if (!status) return;
+
+            const redAlive = countAliveTeam('red');
+            const blueAlive = countAliveTeam('blue') + 1;
+            const opponentLabel = enableRedOpponents ? `Rojo: ${redAlive}` : 'Enemigo: pendiente';
+            status.innerHTML = `Aliados: ${blueAlive} | ${opponentLabel}<br>Tu vida: ${playerHealth}/3${message ? `<br>${message}` : ''}`;
+        }
+
+        function endGame(message, result = 'win') {
+            if (gameOver) return;
+            gameOver = true;
+            gameState = 'ended';
+            updateGameStatus(`${message}<br>Espera al juez para reiniciar.`);
+            document.getElementById('info').innerText = `${message} Espera al juez para reiniciar.`;
+            if (result === 'lose' && player) {
+                player.visible = false;
+            }
+            publishLocalPlayerState(true);
+            showEliminationOverlay(`${result === 'win' ? 'GANASTE' : 'ELIMINADO'}<br><small>Espera al juez</small>`, true, result);
+            const lobby = document.getElementById('lobbyPanel');
+            if (lobby) {
+                lobby.classList.remove('hidden');
+                setLobbyMessage('Partida terminada. Solo el juez puede reiniciar.');
+            }
+        }
+
+        function handlePaintballAvatarHit(shot) {
+            if (shot.team === 'blue') {
+                const hit = teamAvatars.find((npc) => npc.alive && npc.team === 'red' &&
+                    distanceXZ(shot.mesh.position, npc.group.position) < 58 &&
+                    shot.mesh.position.y > 45 && shot.mesh.position.y < 175);
+                if (!hit) return false;
+
+                damageNpc(hit);
+                return true;
+            }
+
+            const playerHitMinY = player.position.y + 38;
+            const playerHitMaxY = player.position.y + (isCrouching ? 128 : 175);
+            if (shot.team === 'red' && player && !gameOver &&
+                distanceXZ(shot.mesh.position, player.position) < 45 &&
+                shot.mesh.position.y > playerHitMinY && shot.mesh.position.y < playerHitMaxY) {
+                playerHealth -= 1;
+                updateGameStatus();
+                publishLocalPlayerState(true);
+                if (playerHealth <= 0) {
+                    endGame('Perdiste: te eliminaron con 3 impactos.', 'lose');
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        function damageNpc(npc) {
+            npc.health -= 1;
+            if (npc.health <= 0) {
+                npc.alive = false;
+                npc.group.visible = false;
+                showEliminationOverlay(`${npc.group.name}<br>ELIMINADO`, false);
+            }
+
+            updateGameStatus();
+            if (countAliveTeam('red') === 0) {
+                endGame('Ganaste: eliminaste a todo el equipo rojo.', 'win');
+            }
+        }
+
+        function distanceXZ(a, b) {
+            const dx = a.x - b.x;
+            const dz = a.z - b.z;
+            return Math.sqrt(dx * dx + dz * dz);
+        }
+
+        function getCameraAimPitch() {
+            return THREE.MathUtils.clamp(pitch * cameraAimPitchStrength, -cameraAimPitchLimit, cameraAimPitchLimit);
+        }
+
+        function getTotalAimPitch() {
+            return rifleAimPitch + getCameraAimPitch();
+        }
+
+        function showEliminationOverlay(message, persistent, type = 'hit') {
+            const overlay = document.getElementById('eliminationOverlay');
+            if (!overlay) return;
+
+            overlay.innerHTML = message;
+            overlay.classList.remove('win', 'lose', 'hit');
+            overlay.classList.add(type);
+            overlay.classList.add('visible');
+            if (!persistent) {
+                window.clearTimeout(showEliminationOverlay.timeoutId);
+                showEliminationOverlay.timeoutId = window.setTimeout(() => {
+                    overlay.classList.remove('visible');
+                    overlay.classList.remove('win', 'lose', 'hit');
+                }, 900);
+            }
+        }
+
+        function updateRifleMotion(isMoving) {
+            if (!rifle) return;
+
+            const crouchDrop = isCrouching ? crouchRifleDrop : 0;
+
+            if (!isMoving || !walkAction) {
+                const restPosition = rifleBasePosition.clone();
+                restPosition.y -= crouchDrop;
+                rifle.position.lerp(restPosition, 0.18);
+                rifle.rotation.x = THREE.MathUtils.lerp(rifle.rotation.x, rifleBaseRotation.x + getTotalAimPitch(), 0.18);
+                rifle.rotation.y = THREE.MathUtils.lerp(rifle.rotation.y, rifleBaseRotation.y + rifleAimYaw * (1 - aimBodyFollow), 0.18);
+                rifle.rotation.z = THREE.MathUtils.lerp(rifle.rotation.z, rifleBaseRotation.z, 0.18);
+                return;
+            }
+
+            const loopLength = Math.max(walkLoopEnd - walkLoopStart, 0.001);
+            const phase = ((walkAction.time - walkLoopStart) / loopLength) * Math.PI * 2;
+            const bob = Math.sin(phase * 2) * 0.22;
+            const sway = -Math.cos(phase) * 2.6;
+            const localPitch = Math.sin(phase * 2) * 0.006;
+            const roll = -Math.cos(phase) * 0.016;
+
+            const targetPosition = new THREE.Vector3(
+                rifleBasePosition.x + sway,
+                rifleBasePosition.y - 5.7 + bob - crouchDrop,
+                rifleBasePosition.z
+            );
+            rifle.position.lerp(targetPosition, 0.13);
+            rifle.rotation.x = THREE.MathUtils.lerp(rifle.rotation.x, rifleBaseRotation.x + localPitch + getTotalAimPitch(), 0.13);
+            rifle.rotation.y = THREE.MathUtils.lerp(rifle.rotation.y, rifleBaseRotation.y + rifleAimYaw * (1 - aimBodyFollow), 0.13);
+            rifle.rotation.z = THREE.MathUtils.lerp(rifle.rotation.z, rifleBaseRotation.z + roll, 0.13);
+        }
+
+        function clampWalkTime(time) {
+            if (walkLoopEnd <= walkLoopStart) return time;
+            if (time < walkLoopStart || time > walkLoopEnd) return walkLoopStart;
+            return time;
+        }
+
+        function syncWalkLoop() {
+            if (!walkAction || !playerIsMoving || walkLoopEnd <= walkLoopStart) return;
+
+            const loopLength = walkLoopEnd - walkLoopStart;
+            if (walkAction.time >= walkLoopEnd) {
+                walkAction.time = walkLoopStart + ((walkAction.time - walkLoopStart) % loopLength);
+            } else if (walkAction.time < walkLoopStart) {
+                walkAction.time = walkLoopStart;
+            }
+        }
+
+        function updateCamera() {
+            if (!player) return;
+            const cameraDrop = isCrouching ? crouchCameraDrop : 0;
+
+            if (isAiming) {
+                const sidePosition = player.position.clone().add(new THREE.Vector3(260, 95, 0));
+                camera.position.lerp(sidePosition, 0.24);
+                camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 95 + rifleAimPitch * 180 - cameraDrop, 0)));
+                camera.fov = THREE.MathUtils.lerp(camera.fov, normalCameraFov, 0.2);
+                camera.updateProjectionMatrix();
+                return;
+            }
+
+            if (sideView) {
+                const zoomOffset = rifleZoomCameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+                const lookOffset = rifleZoomLookOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+                const zoomPosition = player.position.clone().add(zoomOffset);
+                const lookTarget = player.position.clone().add(lookOffset);
+                zoomPosition.y -= cameraDrop;
+                lookTarget.y -= cameraDrop;
+                lookTarget.y += rifleAimPitch * 210;
+                camera.position.lerp(zoomPosition, 0.26);
+                camera.lookAt(lookTarget);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, rifleZoomFov, 0.2);
+                camera.updateProjectionMatrix();
+                return;
+            }
+
+            const orbit = (isAiming ? aimCameraOffset : cameraOffset).clone();
+            orbit.applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+            const desiredPosition = player.position.clone().add(orbit);
+            desiredPosition.y -= cameraDrop;
+            camera.position.lerp(desiredPosition, isAiming ? 0.32 : 0.18);
+            const lookTarget = player.position.clone().add(isAiming ? aimLookTargetOffset : lookTargetOffset);
+            lookTarget.y -= cameraDrop;
+            camera.lookAt(lookTarget);
+
+            const targetFov = isAiming ? aimCameraFov : normalCameraFov;
+            camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, isAiming ? 0.22 : 0.16);
+            camera.updateProjectionMatrix();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            updatePlayer(delta);
+            publishLocalPlayerState();
+
+            if (mixer) {
+                mixer.update(delta);
+                syncWalkLoop();
+                applyRifleHandFollow();
+                if (enableExternalRifle && enableRifleIK) {
+                    applyRifleIK();
+                }
+            }
+
+            updatePaintballs(delta);
+            updateTeamAnimations(delta);
+            updateOpponentFire();
+            updateCamera();
+            if (enableExternalRifle) {
+                updateAimGuide();
+            }
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
+
+
