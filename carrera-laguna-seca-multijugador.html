@@ -1,4 +1,4 @@
-<div id="carrera-laguna-seca-3d" class="race-prototype-3d">
+﻿<div id="carrera-laguna-seca-3d" class="race-prototype-3d">
   <!-- Fuente Orbitron para estética de simulador -->
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
 
@@ -694,7 +694,9 @@
       }
 
       function publishLocalPlayer(now) {
-        if (!registered || !db || !player || now-lastNetworkPush<90) return;
+        // No se publican posiciones durante el registro: asi hasta 10 jugadores
+        // pueden reservar su puesto sin colisiones de transacciones en Firebase.
+        if (!registered || !running || !db || !player || now-lastNetworkPush<90) return;
         lastNetworkPush=now;
         db.ref(`carrerasLagunaSeca/${roomId}/players/${currentUid}`).update({ nickname:player.name, slot:localSlot, x:player.x, z:player.z, angle:player.angle, progress:player.progress, lap:player.lap, finished:player.finished, updatedAt:firebase.database.ServerValue.TIMESTAMP });
       }
