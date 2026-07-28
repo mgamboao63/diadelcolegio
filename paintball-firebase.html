@@ -490,7 +490,7 @@
         import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
         import { getDatabase, ref, onValue, runTransaction, set, update, onDisconnect, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js';
 
-        let scene, camera, renderer, mixer, player, avatar, redAvatar, rifle, walkAction, sharedWalkClip, redWalkClip, aimGuideLine, aimGuidePoint;
+        let scene, camera, renderer, mixer, player, avatar, blueAvatarTemplate, redAvatar, rifle, walkAction, sharedWalkClip, redWalkClip, aimGuideLine, aimGuidePoint;
         let leftHandBone, rightHandBone, rifleHandRestCenter;
         const rifleIKs = [];
         let idlePoseTime = 0;
@@ -526,6 +526,7 @@
         const paintballs = [];
         const paintSplats = [];
         const teamAvatars = [];
+        const remotePlayers = new Map();
         const registrations = { blue: [], red: [] };
         const firebaseConfig = {
             apiKey: 'AIzaSyCnM74qIoBtYY943dChQPYEclRSvUfDu1g',
@@ -544,6 +545,8 @@
         let localPlayerRef = null;
         let lastRoomCycle = 0;
         let lastPublishTime = 0;
+        let blueTemplateLoading = false;
+        let redTemplateLoading = false;
         const lobbyAvatars = [
             { name: 'Rayo', file: 'avatars/rayo.png', color: '#f59e0b' },
             { name: 'Fenix', file: 'avatars/fenix.png', color: '#ef4444' },
@@ -640,9 +643,7 @@
             createArena();
             createPlayer();
             updateGameStatus('Inscribete y espera la orden del juez.');
-            if (enableRedOpponents) {
-                loadRedCharacter();
-            }
+            loadRedCharacter();
             setupInput();
             setupLobby();
             connectFirebaseRoom();
@@ -703,6 +704,7 @@
 
             syncRegistrationsFromRoom();
             renderLobby();
+            syncRemotePlayers();
             setJudgeMessage(`Conectados: ${getRoomPlayers().length}/10`);
 
             const currentCycle = roomData.game?.cycle || 0;
@@ -750,6 +752,149 @@
 
         function getRoomPlayers() {
             return Object.values(roomData.players || {});
+        }
+
+        function syncRemotePlayers() {
+            if (!scene) return;
+            const playersByUid = roomData.players || {};
+            const activeRemoteUids = new Set();
+            const needsBlue = Object.entries(playersByUid).some(([uid, playerData]) =>
+                uid !== firebaseUid && (playerData.team || 'blue') === 'blue'
+            );
+            const needsRed = Object.entries(playersByUid).some(([uid, playerData]) =>
+                uid !== firebaseUid && playerData.team === 'red'
+            );
+
+            if (needsBlue) {
+                ensureBlueAvatarTemplate();
+            }
+            if (needsRed) {
+                loadRedCharacter();
+            }
+
+            Object.entries(playersByUid).forEach(([uid, playerData], index) => {
+                if (uid === firebaseUid) return;
+                activeRemoteUids.add(uid);
+
+                let remote = remotePlayers.get(uid);
+                if (!remote) {
+                    remote = createRemotePlayer(uid, playerData, index);
+                    if (!remote) return;
+                    remotePlayers.set(uid, remote);
+                }
+                updateRemotePlayerTransform(remote, playerData, index);
+            });
+
+            Array.from(remotePlayers.entries()).forEach(([uid, remote]) => {
+                if (activeRemoteUids.has(uid)) return;
+                scene.remove(remote.group);
+                remotePlayers.delete(uid);
+            });
+        }
+
+        function ensureBlueAvatarTemplate() {
+            if (blueAvatarTemplate || blueTemplateLoading) return;
+            blueTemplateLoading = true;
+            const loader = new FBXLoader();
+            loader.load(
+                'character.fbx',
+                (object) => {
+                    blueTemplateLoading = false;
+                    blueAvatarTemplate = object;
+                    blueAvatarTemplate.scale.set(1, 1, 1);
+                    blueAvatarTemplate.rotation.y = Math.PI;
+                    blueAvatarTemplate.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    if (blueAvatarTemplate.animations && blueAvatarTemplate.animations.length > 0 && !sharedWalkClip) {
+                        sharedWalkClip = makeClipInPlace(blueAvatarTemplate.animations[0]);
+                    }
+                    syncRemotePlayers();
+                },
+                undefined,
+                (error) => {
+                    blueTemplateLoading = false;
+                    console.error('Error al cargar character.fbx como plantilla remota:', error);
+                }
+            );
+        }
+
+        function getRemoteSourceAvatar(team) {
+            if (team === 'red') return redAvatar;
+            return blueAvatarTemplate || avatar;
+        }
+
+        function createRemotePlayer(uid, playerData, index) {
+            const team = playerData.team === 'red' ? 'red' : 'blue';
+            const sourceAvatar = getRemoteSourceAvatar(team);
+            if (!sourceAvatar) return null;
+
+            const remoteGroup = new THREE.Group();
+            remoteGroup.name = `Jugador remoto ${playerData.nickname || uid}`;
+
+            const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
+            remoteAvatar.rotation.y = Math.PI;
+            remoteGroup.add(remoteAvatar);
+            addTeamMarker(remoteGroup, team === 'red' ? 0xd92828 : 0x1e68ff);
+
+            if (rifle) {
+                const remoteRifle = rifle.clone(true);
+                remoteRifle.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        if (child.material) child.material = child.material.clone();
+                    }
+                });
+                remoteGroup.add(remoteRifle);
+            }
+
+            scene.add(remoteGroup);
+            const animation = createNpcWalkAnimation(remoteAvatar, team);
+            const remote = {
+                uid,
+                group: remoteGroup,
+                mixer: animation.mixer,
+                action: animation.action,
+                loopStart: animation.loopStart ?? walkLoopStart,
+                loopEnd: animation.loopEnd ?? walkLoopEnd,
+                lastX: Number(playerData.x) || 0,
+                lastZ: Number(playerData.z) || 0,
+                movingUntil: 0
+            };
+            updateRemotePlayerTransform(remote, playerData, index);
+            return remote;
+        }
+
+        function updateRemotePlayerTransform(remote, playerData, index) {
+            const team = playerData.team === 'red' ? 'red' : 'blue';
+            const fallback = getTeamSpawn(team, index);
+            const storedX = Number(playerData.x);
+            const storedZ = Number(playerData.z);
+            const hasPublishedPosition = Number.isFinite(storedX) && Number.isFinite(storedZ) && (Math.abs(storedX) + Math.abs(storedZ) > 2);
+            const x = hasPublishedPosition ? storedX : fallback.position.x;
+            const y = Number.isFinite(Number(playerData.y)) ? Number(playerData.y) : 0;
+            const z = hasPublishedPosition ? storedZ : fallback.position.z;
+            const yawValue = Number.isFinite(Number(playerData.rotationY)) ? Number(playerData.rotationY) :
+                (Number.isFinite(Number(playerData.yaw)) ? Number(playerData.yaw) + playerFacingOffset : fallback.yaw + playerFacingOffset);
+
+            const moved = Math.abs(x - remote.lastX) + Math.abs(z - remote.lastZ) > 0.8;
+            if (moved) {
+                remote.movingUntil = performance.now() + 180;
+            }
+            remote.lastX = x;
+            remote.lastZ = z;
+
+            remote.group.visible = playerData.alive !== false;
+            remote.group.position.lerp(new THREE.Vector3(x, y, z), 0.35);
+            remote.group.rotation.y = THREE.MathUtils.lerp(remote.group.rotation.y, yawValue, 0.35);
+
+            if (remote.action) {
+                remote.action.timeScale = performance.now() < remote.movingUntil ? 0.9 : 0;
+            }
         }
 
         function renderAvatarChoices() {
@@ -829,6 +974,7 @@
                     const teamCount = players.filter((playerData) => playerData.team === team).length;
                     if (teamCount >= maxPlayersPerTeam) return;
 
+                    const spawn = getTeamSpawn(team, teamCount);
                     room.players[firebaseUid] = {
                         uid: firebaseUid,
                         nickname,
@@ -836,10 +982,11 @@
                         avatar: selectedLobbyAvatar,
                         health: 3,
                         alive: true,
-                        x: 0,
+                        x: Number(spawn.position.x.toFixed(2)),
                         y: 0,
-                        z: 0,
-                        yaw: 0,
+                        z: Number(spawn.position.z.toFixed(2)),
+                        yaw: Number(spawn.yaw.toFixed(4)),
+                        rotationY: Number((spawn.yaw + playerFacingOffset).toFixed(4)),
                         crouching: false,
                         joinedAt: Date.now(),
                         updatedAt: Date.now()
@@ -992,12 +1139,25 @@
             }[char]));
         }
 
-        function placePlayerAtTeamSpawn(team) {
+        function getTeamSpawn(team, index = 0) {
             const flagPosition = team === 'blue' ? blueFlagPosition : redFlagPosition;
             const spawnDirection = flagPosition.clone().normalize();
-            const spawnPosition = flagPosition.clone().addScaledVector(spawnDirection, 360);
-            player.position.set(spawnPosition.x, 0, spawnPosition.z);
-            yaw = Math.atan2(-spawnPosition.x, -spawnPosition.z);
+            const sideDirection = new THREE.Vector3(-spawnDirection.z, 0, spawnDirection.x);
+            const slotOffset = (index - 2) * 70;
+            const spawnPosition = flagPosition
+                .clone()
+                .addScaledVector(spawnDirection, 360)
+                .addScaledVector(sideDirection, slotOffset);
+            return {
+                position: spawnPosition,
+                yaw: Math.atan2(-spawnPosition.x, -spawnPosition.z)
+            };
+        }
+
+        function placePlayerAtTeamSpawn(team) {
+            const spawn = getTeamSpawn(team, registrations[team]?.length || 0);
+            player.position.set(spawn.position.x, 0, spawn.position.z);
+            yaw = spawn.yaw;
         }
 
         function createRosterMarker(nickname, team, index) {
@@ -1083,6 +1243,9 @@
                 playerCharacterFile,
                 (object) => {
                     avatar = object;
+                    if (playerCharacterFile === 'character.fbx') {
+                        blueAvatarTemplate = object;
+                    }
                     object.scale.set(1, 1, 1);
                     object.rotation.y = Math.PI;
 
@@ -1113,6 +1276,7 @@
                         setupRifleIK();
                     }
                     tryCreateTeamAvatars();
+                    syncRemotePlayers();
                     document.getElementById('info').innerText = 'Listo: click en pantalla, luego WASD para caminar.';
                 },
                 (xhr) => {
@@ -1127,10 +1291,13 @@
         }
 
         function loadRedCharacter() {
+            if (redAvatar || redTemplateLoading) return;
+            redTemplateLoading = true;
             const loader = new FBXLoader();
             loader.load(
                 'red_character.fbx',
                 (object) => {
+                    redTemplateLoading = false;
                     redAvatar = object;
                     redAvatar.scale.set(1, 1, 1);
                     redAvatar.rotation.y = Math.PI;
@@ -1146,9 +1313,11 @@
                         console.warn('red_character.fbx cargo sin animaciones.');
                     }
                     tryCreateTeamAvatars();
+                    syncRemotePlayers();
                 },
                 undefined,
                 (error) => {
+                    redTemplateLoading = false;
                     console.error('Error al cargar red_character.fbx:', error);
                     document.getElementById('info').innerText = 'Error al cargar red_character.fbx.';
                 }
@@ -1180,6 +1349,7 @@
                         setupRifleIK();
                     }
                     tryCreateTeamAvatars();
+                    syncRemotePlayers();
                 },
                 undefined,
                 (error) => {
@@ -2430,6 +2600,20 @@
             });
         }
 
+        function updateRemotePlayerAnimations(delta) {
+            remotePlayers.forEach((remote) => {
+                if (!remote.mixer || !remote.action) return;
+
+                remote.mixer.update(delta);
+                if (remote.action.time >= remote.loopEnd) {
+                    const loopLength = Math.max(remote.loopEnd - remote.loopStart, 0.001);
+                    remote.action.time = remote.loopStart + ((remote.action.time - remote.loopStart) % loopLength);
+                } else if (remote.action.time < remote.loopStart) {
+                    remote.action.time = remote.loopStart;
+                }
+            });
+        }
+
         function createPaintSplat(position, color, collider = null) {
             const splatColor = color instanceof THREE.Color ? color.getHex() : color;
             const material = new THREE.MeshBasicMaterial({
@@ -2697,6 +2881,7 @@
 
             updatePaintballs(delta);
             updateTeamAnimations(delta);
+            updateRemotePlayerAnimations(delta);
             updateOpponentFire();
             updateCamera();
             if (enableExternalRifle) {
