@@ -542,6 +542,14 @@
         let firebaseUid = '';
         let roomData = { game: { phase: 'lobby', cycle: 0 }, players: {} };
         let firebaseReady = false;
+        function getSessionPlayerId(baseUid) {
+            let sessionId = sessionStorage.getItem('paintballSessionId');
+            if (!sessionId) {
+                sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+                sessionStorage.setItem('paintballSessionId', sessionId);
+            }
+            return `${baseUid}-${sessionId}`;
+        }
         let localPlayerRef = null;
         let lastRoomCycle = 0;
         let lastPublishTime = 0;

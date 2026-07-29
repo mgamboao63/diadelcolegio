@@ -1,6 +1,10 @@
 const HOJA_NOMBRE = "Estudiantes";
 const JUEZ_USUARIO = "Juez";
 const JUEZ_CONTRASENA = "136101521";
+const TOTAL_JUEGOS_PUNTUABLES = 10;
+const PRIMERA_COLUMNA_JUEGO = 7;
+const COLUMNA_PENALIZACION = PRIMERA_COLUMNA_JUEGO + TOTAL_JUEGOS_PUNTUABLES;
+const COLUMNA_TOTAL = COLUMNA_PENALIZACION + 1;
 
 function json(data) {
   return ContentService
@@ -30,13 +34,15 @@ function datosEstudiante(fila) {
   return {
     curso: texto(fila[1]),
     nombre: nombreEstudiante(fila),
-    juegos: {
-      juego1: numero(fila[6]), juego2: numero(fila[7]),
-      juego3: numero(fila[8]), juego4: numero(fila[9]),
-      juego5: numero(fila[10]), juego6: numero(fila[11]),
-      juego7: numero(fila[12]), juego8: numero(fila[13]),
-      penalizacion: numero(fila[14]), total: numero(fila[15])
-    }
+    juegos: (() => {
+      const juegos = {};
+      for (let i = 1; i <= TOTAL_JUEGOS_PUNTUABLES; i++) {
+        juegos['juego' + i] = numero(fila[PRIMERA_COLUMNA_JUEGO - 2 + i]);
+      }
+      juegos.penalizacion = numero(fila[COLUMNA_PENALIZACION - 1]);
+      juegos.total = numero(fila[COLUMNA_TOTAL - 1]);
+      return juegos;
+    })()
   };
 }
 
@@ -100,7 +106,7 @@ function doPost(e) {
   const id = texto(req.id);
   const juego = Number(req.juego);
   if (!id) return json({ error: true, mensaje: 'Falta el ID del estudiante.' });
-  if (!Number.isInteger(juego) || juego < 1 || juego > 9) {
+  if (!Number.isInteger(juego) || juego < 1 || juego > TOTAL_JUEGOS_PUNTUABLES + 1) {
     return json({ error: true, mensaje: 'Juego inválido.' });
   }
 
@@ -116,8 +122,8 @@ function doPost(e) {
       if (texto(datos[i][0]) !== id) continue;
 
       const fila = i + 1;
-      const columna = juego <= 8 ? 6 + juego : 15;
-      const valor = numero(datos[i][columna - 1]) + (juego <= 8 ? 1 : -1);
+      const columna = juego <= TOTAL_JUEGOS_PUNTUABLES ? PRIMERA_COLUMNA_JUEGO + juego - 1 : COLUMNA_PENALIZACION;
+      const valor = numero(datos[i][columna - 1]) + (juego <= TOTAL_JUEGOS_PUNTUABLES ? 1 : -1);
       sh.getRange(fila, columna).setValue(valor);
       SpreadsheetApp.flush();
 
@@ -127,7 +133,7 @@ function doPost(e) {
         curso: texto(datos[i][1]),
         juego: juego,
         puntajeJuego: valor,
-        total: sh.getRange(fila, 16).getValue()
+        total: sh.getRange(fila, COLUMNA_TOTAL).getValue()
       });
     }
     return json({ error: true, mensaje: 'No existe el estudiante.' });
