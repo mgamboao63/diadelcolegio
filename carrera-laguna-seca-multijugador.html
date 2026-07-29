@@ -1,4 +1,4 @@
-﻿<div id="carrera-laguna-seca-3d" class="race-prototype-3d">
+<div id="carrera-laguna-seca-3d" class="race-prototype-3d">
   <!-- Fuente Orbitron para estética de simulador -->
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
 
@@ -537,7 +537,7 @@
       const isJudgeMode = mode === 'juez';
       const isLiveMode = mode === 'vivo';
       const carColors = [0xd97706,0x38bdf8,0xef4444,0x22c55e,0xa855f7,0xec4899,0xeab308,0x06b6d4,0xf97316,0x64748b];
-      let db, roomRef, currentUid = null, localSlot = null, localNickname = 'Jugador', registered = false, lastNetworkPush = 0;
+      let db, roomRef, authUid = null, currentUid = null, localSlot = null, localNickname = 'Jugador', registered = false, lastNetworkPush = 0;
       const remoteCars = new Map();
       let roomData = { players:{}, game:{phase:'lobby',cycle:0} }, judgeAuthorized = false, lastGameCycle = 0;
 
@@ -576,12 +576,39 @@
       let engineStarted = false;
 
       function remoteColor(slot) { return carColors[(Math.max(1,slot||1)-1)%carColors.length]; }
+      function getSessionPlayerId(uid) {
+        let sessionId = sessionStorage.getItem('lagunaSecaSessionId');
+        if (!sessionId) {
+          sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          sessionStorage.setItem('lagunaSecaSessionId', sessionId);
+        }
+        return `${uid}-${sessionId}`;
+      }
+
+      function gridStartForSlot(slot) {
+        if (!trackPoints.length) return { x: 0, z: 0, angle: 0 };
+        const gridIndex = Math.max(0, (Number(slot) || 1) - 1);
+        const startIndex = Math.max(0, trackPoints.length - 1 - gridIndex * 3);
+        const pointData = trackPoints[startIndex];
+        const nextData = trackPoints[Math.min(trackPoints.length - 1, startIndex + 1)] || pointData;
+        const p = pointData.pos || pointData;
+        const next = nextData.pos || nextData;
+        const angle = Math.atan2(next.x - p.x, next.z - p.z);
+        const side = gridIndex % 2 === 0 ? -18 : 18;
+        const back = Math.floor(gridIndex / 2) * 26;
+        return {
+          x: p.x + Math.cos(angle) * side - Math.sin(angle) * back,
+          z: p.z - Math.sin(angle) * side - Math.cos(angle) * back,
+          angle
+        };
+      }
 
       async function connectToRoom() {
         try {
           if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
           await firebase.auth().signInAnonymously();
-          currentUid = firebase.auth().currentUser.uid;
+          authUid = firebase.auth().currentUser.uid;
+          currentUid = getSessionPlayerId(authUid);
           db = firebase.database();
           roomRef = db.ref(`carrerasLagunaSeca/${roomId}`);
           roomRef.on('value', snapshot => applyRoom(snapshot.val() || { players:{}, game:{phase:'lobby',cycle:0} }));
@@ -646,7 +673,8 @@
             const occupied = new Set(Object.values(room.players).map(player => player.slot));
             let slot = 1; while (occupied.has(slot) && slot <= 10) slot += 1;
             if (slot > 10) return;
-            room.players[currentUid] = { nickname, slot, joinedAt:firebase.database.ServerValue.TIMESTAMP };
+            const start = gridStartForSlot(slot);
+            room.players[currentUid] = { nickname, slot, x:start.x, z:start.z, angle:start.angle, progress:0, lap:1, finished:false, joinedAt:Date.now(), updatedAt:Date.now() };
             return room;
           });
           const room = result.snapshot.val();

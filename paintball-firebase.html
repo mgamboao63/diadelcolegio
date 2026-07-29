@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -694,7 +694,7 @@
             setLobbyMessage('Conectando sala...');
             try {
                 await signInAnonymously(firebaseAuth);
-                firebaseUid = firebaseAuth.currentUser.uid;
+                firebaseUid = getSessionPlayerId(firebaseAuth.currentUser.uid);
                 firebaseReady = true;
                 localPlayerRef = ref(firebaseDb, `juegos/paintball/players/${firebaseUid}`);
                 onDisconnect(localPlayerRef).remove();
