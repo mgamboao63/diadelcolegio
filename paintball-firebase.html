@@ -415,7 +415,7 @@
     <div id="lobbyPanel">
         <div class="lobby-card">
             <div class="lobby-title">Paintball Borderland</div>
-            <div class="lobby-subtitle">Inscripcion por equipos. El juez inicia cuando todos esten listos.</div>
+            <div class="lobby-subtitle">Todos contra todos. Tres impactos eliminan; el ultimo en pie gana.</div>
             <div class="lobby-tabs">
                 <button id="playersTabButton" class="lobby-tab active" type="button">Jugadores</button>
                 <button id="judgeTabButton" class="lobby-tab" type="button">Juez</button>
@@ -425,25 +425,14 @@
                     <h3>Registro de jugador</h3>
                     <div class="lobby-row">
                         <input id="nicknameInput" maxlength="18" placeholder="Nickname">
-                        <select id="teamSelect">
-                            <option value="blue">Azul</option>
-                            <option value="red">Rojo</option>
-                        </select>
+
                     </div>
                     <h3>Avatar</h3>
                     <div id="avatarGrid" class="avatar-grid"></div>
                     <button id="joinButton">Inscribir jugador</button>
                     <div id="lobbyMessage"></div>
-                    <div class="team-summary">
-                        <div class="team-summary-item">
-                            <strong>Equipo azul</strong>
-                            <span id="bluePlayerCount" class="team-count">0/5 inscritos</span>
-                        </div>
-                        <div class="team-summary-item">
-                            <strong>Equipo rojo</strong>
-                            <span id="redPlayerCount" class="team-count">0/5 inscritos</span>
-                        </div>
-                    </div>
+                    <div class="team-summary"><div class="team-summary-item"><strong>Arena libre</strong><span id="freePlayerCount" class="team-count">0/10 inscritos</span></div></div>
+
                 </section>
             </div>
             <div id="judgeLobbyView" class="lobby-view hidden">
@@ -459,14 +448,8 @@
                     </div>
                     <div id="judgeMessage"></div>
                 </section>
-                <section class="lobby-section">
-                    <h3>Equipo azul <span id="blueCount" class="team-count">0/5</span></h3>
-                    <ol id="blueRoster" class="team-list"></ol>
-                </section>
-                <section class="lobby-section">
-                    <h3>Equipo rojo <span id="redCount" class="team-count">0/5</span></h3>
-                    <ol id="redRoster" class="team-list"></ol>
-                </section>
+                <section class="lobby-section"><h3>Jugadores en la arena <span id="freeCount" class="team-count">0/10</span></h3><ol id="freeRoster" class="team-list"></ol></section>
+
                 </div>
             </div>
         </div>
@@ -570,7 +553,7 @@
         const rosterMarkers = [];
         const blueFlagPosition = new THREE.Vector3();
         const redFlagPosition = new THREE.Vector3();
-        const maxPlayersPerTeam = 5;
+        const maxPlayersPerTeam = 10;
         const judgePassword = '136101521';
         const arenaSeed = 240727;
         const pageMode = new URLSearchParams(window.location.search).get('modo') || 'jugador';
@@ -583,6 +566,7 @@
         let playerHealth = 3;
         let gameOver = false;
         let shotSequence = 0;
+        let winnerCheckInProgress = false;
 
         const moveSpeed = 180;
         const sprintSpeed = 350;
@@ -749,6 +733,7 @@
             }
 
             const phase = roomData.game?.phase || 'lobby';
+            if (phase === 'running') finishFreeForAllIfNeeded();
             if (!playerRegistered) {
                 gameState = phase;
             }
@@ -758,9 +743,28 @@
                 hideWaitingForJudge();
                 document.getElementById('lobbyPanel')?.classList.add('hidden');
                 updateGameStatus(`Partida iniciada. Jugador: ${playerNickname} (${playerTeam === 'blue' ? 'azul' : 'rojo'}).`);
+            } else if (phase === 'ended' && playerRegistered && gameState !== 'ended') {
+                const winner = roomData.game?.winnerUid === firebaseUid;
+                endGame(winner ? 'Ganaste: eres el ultimo jugador en pie.' : 'Partida terminada. Otro jugador sobrevivio.', winner ? 'win' : 'lose');
             } else if (phase === 'lobby' && previousPhase !== 'lobby') {
                 updateGameStatus('Inscribete y espera la orden del juez.');
             }
+        }
+
+        function finishFreeForAllIfNeeded() {
+            if (!firebaseReady || winnerCheckInProgress || roomData.game?.phase !== 'running') return;
+            const alive = Object.entries(roomData.players || {}).filter(([, item]) => item.alive !== false);
+            if (alive.length > 1) return;
+            winnerCheckInProgress = true;
+            runTransaction(roomRef, (room) => {
+                if (!room || room.game?.phase !== 'running') return;
+                const survivors = Object.entries(room.players || {}).filter(([, item]) => item.alive !== false);
+                if (survivors.length > 1) return;
+                room.game.phase = 'ended';
+                room.game.winnerUid = survivors[0]?.[0] || null;
+                room.game.finishedAt = Date.now();
+                return room;
+            }).catch(() => {}).finally(() => { winnerCheckInProgress = false; });
         }
 
         function syncLocalCombatState() {
@@ -1127,9 +1131,10 @@
             }
 
             const nicknameInput = document.getElementById('nicknameInput');
-            const teamSelect = document.getElementById('teamSelect');
             const nickname = nicknameInput.value.trim();
-            const team = teamSelect.value;
+            // El color se asigna automaticamente solo para distinguir los disparos.
+            // Todos los jugadores son rivales.
+            let team = 'blue';
 
             if (!nickname) {
                 setLobbyMessage('Escribe un nickname.');
@@ -1154,16 +1159,16 @@
                     );
                     if (nicknameExists) return;
 
-                    const teamCount = players.filter((playerData) => playerData.team === team).length;
-                    if (teamCount >= maxPlayersPerTeam) return;
-
-                    const spawn = getTeamSpawn(team, teamCount);
+                    if (players.length >= maxPlayersPerTeam) return;
+                    const spawnSlot = players.length;
+                    team = spawnSlot % 2 === 0 ? 'blue' : 'red';
+                    const spawn = getTeamSpawn(team, spawnSlot);
                     room.players[firebaseUid] = {
                         uid: firebaseUid,
                         nickname,
                         team,
                         avatar: selectedLobbyAvatar,
-                        spawnSlot: teamCount,
+                        spawnSlot,
                         health: 3,
                         alive: true,
                         x: Number(spawn.position.x.toFixed(2)),
@@ -1204,13 +1209,13 @@
                     loadRifle();
                 }
                 publishLocalPlayerState(true);
-                updateGameStatus(`${nickname} inscrito en equipo ${team === 'blue' ? 'azul' : 'rojo'}. Espera al juez.`);
+                updateGameStatus(`${nickname} inscrito. Todos son rivales: espera al juez.`);
             }
 
             nicknameInput.value = '';
-            setLobbyMessage(`${nickname} inscrito en ${team === 'blue' ? 'azul' : 'rojo'}.`);
+            setLobbyMessage(`${nickname} inscrito en la arena libre.`);
             renderLobby();
-            createRosterMarker(nickname, team, registrations[team].length);
+            createRosterMarker(nickname, team, localSpawnSlot);
             lockRegisteredPlayerForm();
             showWaitingForJudge();
         }
@@ -1245,7 +1250,6 @@
 
         function lockRegisteredPlayerForm() {
             const nicknameInput = document.getElementById('nicknameInput');
-            const teamSelect = document.getElementById('teamSelect');
             const joinButton = document.getElementById('joinButton');
             const avatarGrid = document.getElementById('avatarGrid');
 
@@ -1253,7 +1257,7 @@
                 nicknameInput.value = playerNickname;
                 nicknameInput.disabled = true;
             }
-            if (teamSelect) teamSelect.disabled = true;
+
             if (joinButton) {
                 joinButton.disabled = true;
                 joinButton.textContent = 'Jugador inscrito';
@@ -1270,7 +1274,7 @@
             const waitingText = document.getElementById('waitingText');
             const lobby = document.getElementById('lobbyPanel');
             if (waitingText) {
-                waitingText.textContent = `${playerNickname} (${playerTeam === 'blue' ? 'equipo azul' : 'equipo rojo'}) esta listo. La partida iniciara cuando el juez de la orden.`;
+                waitingText.textContent = `${playerNickname} esta listo. La partida todos contra todos iniciara cuando el juez de la orden.`;
             }
             if (lobby) lobby.classList.add('hidden');
             if (waitingOverlay) waitingOverlay.classList.add('visible');
@@ -1292,34 +1296,19 @@
         }
 
         function renderLobby() {
-            renderTeamRoster('blue');
-            renderTeamRoster('red');
-        }
-
-        function renderTeamRoster(team) {
-            const roster = document.getElementById(`${team}Roster`);
-            const count = document.getElementById(`${team}Count`);
-            const playerCount = document.getElementById(`${team}PlayerCount`);
-            if (!roster || !count) return;
-
-            const teamName = team === 'blue' ? 'Azul' : 'Rojo';
-            const teamColor = team === 'blue' ? '#2f6fed' : '#d92828';
-            roster.innerHTML = registrations[team].map((playerData) => {
-                const avatarData = lobbyAvatars[playerData.avatar] || lobbyAvatars[0];
-                return `
-                    <li class="roster-card" style="--team-color:${teamColor}">
-                        <img class="roster-avatar" src="${avatarData.file}" alt="${escapeHtml(avatarData.name)}">
-                        <span>
-                            <b>${escapeHtml(playerData.nickname)}</b>
-                            <small>${teamName} - ${escapeHtml(avatarData.name)}</small>
-                        </span>
-                    </li>
-                `;
-            }).join('');
-            count.textContent = `${registrations[team].length}/${maxPlayersPerTeam}`;
-            if (playerCount) {
-                playerCount.textContent = `${registrations[team].length}/${maxPlayersPerTeam} inscritos`;
+            const players = getRoomPlayers().sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+            const roster = document.getElementById('freeRoster');
+            const count = document.getElementById('freeCount');
+            const playerCount = document.getElementById('freePlayerCount');
+            if (roster) {
+                roster.innerHTML = players.map((playerData, index) => {
+                    const avatarData = lobbyAvatars[playerData.avatar] || lobbyAvatars[0];
+                    const color = index % 2 === 0 ? '#2f6fed' : '#d92828';
+                    return `<li class="roster-card" style="--team-color:${color}"><img class="roster-avatar" src="${avatarData.file}" alt="${escapeHtml(avatarData.name)}"><span><b>${escapeHtml(playerData.nickname)}</b><small>Rival ${index + 1} · ${escapeHtml(avatarData.name)}</small></span></li>`;
+                }).join('');
             }
+            if (count) count.textContent = `${players.length}/${maxPlayersPerTeam}`;
+            if (playerCount) playerCount.textContent = `${players.length}/${maxPlayersPerTeam} inscritos`;
         }
 
         function escapeHtml(text) {
@@ -1333,18 +1322,14 @@
         }
 
         function getTeamSpawn(team, index = 0) {
-            const flagPosition = team === 'blue' ? blueFlagPosition : redFlagPosition;
-            const spawnDirection = flagPosition.clone().normalize();
-            const sideDirection = new THREE.Vector3(-spawnDirection.z, 0, spawnDirection.x);
-            const slotOffset = (index - 2) * 70;
-            const spawnPosition = flagPosition
-                .clone()
-                .addScaledVector(spawnDirection, 360)
-                .addScaledVector(sideDirection, slotOffset);
-            return {
-                position: spawnPosition,
-                yaw: Math.atan2(-spawnPosition.x, -spawnPosition.z)
-            };
+            // Diez puntos separados: no existen bases ni equipos; todos empiezan repartidos.
+            const spawns = [
+                [-1850, -1320], [1850, 1320], [-1600, 1480], [1620, -1510], [0, -2050],
+                [0, 2050], [-2200, 120], [2200, -120], [-900, 0], [900, 0]
+            ];
+            const point = spawns[index % spawns.length];
+            const spawnPosition = new THREE.Vector3(point[0], 0, point[1]);
+            return { position: spawnPosition, yaw: Math.atan2(-spawnPosition.x, -spawnPosition.z) };
         }
 
         function getPlayerSpawnSlot(playerData, fallbackIndex = 0) {
@@ -1396,8 +1381,8 @@
 
         async function judgeStartGame() {
             if (!validateJudgePassword()) return;
-            if (!getRoomPlayers().length) {
-                setJudgeMessage('Debe existir al menos un jugador inscrito para iniciar.');
+            if (getRoomPlayers().length < 2) {
+                setJudgeMessage('Para todos contra todos deben existir al menos dos jugadores inscritos.');
                 return;
             }
 
@@ -1412,6 +1397,7 @@
                     playerData.eliminated = false;
                 });
                 room.game.phase = 'running';
+                room.game.winnerUid = null;
                 room.game.startedAt = Date.now();
                 return room;
             });
@@ -2104,12 +2090,8 @@
             createUrbanCover();
             createBoundaryWalls();
 
-            createFlagCover(blueFlagPosition, 0x1e68ff);
-            createFlagCover(redFlagPosition, 0xd92828);
-            createBaseZone(blueFlagPosition, 0x1e68ff, 'Base azul');
-            createBaseZone(redFlagPosition, 0xd92828, 'Base roja');
-            createTeamFlag('Bandera Azul', blueFlagPosition.x, blueFlagPosition.z, 0x1e68ff);
-            createTeamFlag('Bandera Roja', redFlagPosition.x, redFlagPosition.z, 0xd92828);
+            createCityDistrict();
+
         }
 
         function chooseFlagBases() {
@@ -2119,6 +2101,30 @@
             redFlagPosition.copy(blueFlagPosition).multiplyScalar(-1);
         }
 
+        function createCityDistrict() {
+            // Escenario temporal de ciudad: se puede reemplazar mas adelante por un .glb.
+            const asphalt = new THREE.MeshStandardMaterial({ color: 0x34383d, roughness: 0.92 });
+            [[0, 0, 5200, 330], [0, 0, 330, 5200], [-1050, 640, 2700, 190], [1180, -740, 2300, 190]].forEach(([x, z, w, d]) => {
+                const street = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), asphalt);
+                street.position.set(x, 2, z); street.receiveShadow = true; scene.add(street);
+            });
+            const buildings = [
+                ['Torre Norte', -1350, -1300, 420, 360, 380, 0x7c8794], ['Mercado', 1320, 1340, 520, 220, 340, 0x8f755d],
+                ['Biblioteca', -1460, 1350, 480, 250, 390, 0x6f8087], ['Estacion', 1450, -1340, 440, 300, 410, 0x926f64],
+                ['Apartamentos A', -470, 1040, 310, 430, 300, 0x74818b], ['Apartamentos B', 540, -1080, 320, 390, 320, 0x87766e],
+                ['Cafe Central', -520, -480, 300, 170, 260, 0x956f49], ['Taller', 560, 500, 340, 190, 280, 0x647074]
+            ];
+            buildings.forEach(([name, x, z, w, h, d, color]) => createBuilding(name, x, z, w, h, d, color));
+            const lampMaterial = new THREE.MeshStandardMaterial({ color: 0x30363b, roughness: 0.64 });
+            for (let i = -2200; i <= 2200; i += 440) {
+                [[i, -185], [i, 185], [-185, i], [185, i]].forEach(([x,z]) => {
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(7, 9, 170, 10), lampMaterial);
+                    pole.position.set(x, 85, z); pole.castShadow = true; scene.add(pole);
+                    const lamp = new THREE.Mesh(new THREE.SphereGeometry(17, 12, 8), new THREE.MeshBasicMaterial({color:0xffe5a5}));
+                    lamp.position.set(x, 174, z); scene.add(lamp);
+                });
+            }
+        }
         function createMountainRing() {
             const mountainMaterial = new THREE.MeshStandardMaterial({ color: 0x586b5a, roughness: 1 });
             const snowMaterial = new THREE.MeshStandardMaterial({ color: 0xd8e5e8, roughness: 0.8 });
@@ -2366,7 +2372,7 @@
             roof.receiveShadow = true;
             scene.add(roof);
 
-            addBoxCollider(x, z, width + 18, depth + 18, 0);
+            addBoxCollider(x, z, width + 18, depth + 18, 0, height + 20);
         }
 
         function createBoardBunker(name, x, z, rotation, length, height, thickness) {
@@ -2679,11 +2685,7 @@
                 updateRifleMotion(isMoving);
             }
 
-            const targetFlag = playerTeam === 'blue' ? redFlagPosition : blueFlagPosition;
-            const targetFlagName = playerTeam === 'blue' ? 'roja' : 'azul';
-            if (distanceXZ(player.position, targetFlag) < 88) {
-                endGame(`Ganaste: capturaste la bandera ${targetFlagName}.`, 'win');
-            }
+
         }
 
         function updateVerticalMovement(delta) {
@@ -2766,7 +2768,8 @@
                         shot.mesh.position.y < 3;
                     const hitCollider = getHitCollider(shot.mesh.position, 7);
                     const hitCover = hitCollider !== null;
-                    const hitAvatar = handlePaintballAvatarHit(shot);
+                    // Primero se resuelve el objeto: una pared o edificio protege al jugador.
+                    const hitAvatar = hitCover ? false : handlePaintballAvatarHit(shot);
                     const hitGround = shot.mesh.position.y < 8;
 
                     if (hitCover || hitGround) {
@@ -2902,10 +2905,8 @@
             const status = document.getElementById('gameStatus');
             if (!status) return;
 
-            const redAlive = countAliveTeam('red');
-            const blueAlive = countAliveTeam('blue') + 1;
-            const opponentLabel = enableRedOpponents ? `Rojo: ${redAlive}` : 'Enemigo: pendiente';
-            status.innerHTML = `Aliados: ${blueAlive} | ${opponentLabel}<br>Tu vida: ${playerHealth}/3${message ? `<br>${message}` : ''}`;
+            const alive = getRoomPlayers().filter((entry) => entry.alive !== false).length;
+            status.innerHTML = `Todos contra todos · Rivales activos: ${alive}<br>Tu vida: ${playerHealth}/3${message ? `<br>${message}` : ''}`;
         }
 
         function endGame(message, result = 'win') {
@@ -2931,10 +2932,10 @@
             // Esto evita que la misma bola reste vida dos veces en otros equipos.
             if (shot.ownerUid === firebaseUid) {
                 const remoteHit = Array.from(remotePlayers.values()).find((remote) =>
-                    remote.group.visible && remote.team !== playerTeam &&
-                    distanceXZ(shot.mesh.position, remote.group.position) < 64 &&
-                    shot.mesh.position.y > remote.group.position.y + 35 &&
-                    shot.mesh.position.y < remote.group.position.y + 185
+                    remote.group.visible && remote.uid !== firebaseUid &&
+                    distanceXZ(shot.mesh.position, remote.group.position) < 102 &&
+                    shot.mesh.position.y > remote.group.position.y + 8 &&
+                    shot.mesh.position.y < remote.group.position.y + 225
                 );
                 if (remoteHit) {
                     registerPaintballHit(remoteHit.uid, shot.shotId);
@@ -2944,11 +2945,9 @@
             }
 
             // En el equipo impactado se elimina visualmente la bola; la vida llega desde Firebase.
-            const playerHitMinY = player.position.y + 35;
-            const playerHitMaxY = player.position.y + (isCrouching ? 130 : 180);
-            if (shot.ownerUid && shot.ownerUid !== firebaseUid && shot.team !== playerTeam && player && !gameOver &&
-                distanceXZ(shot.mesh.position, player.position) < 58 &&
-                shot.mesh.position.y > playerHitMinY && shot.mesh.position.y < playerHitMaxY) {
+            if (shot.ownerUid && shot.ownerUid !== firebaseUid && player && !gameOver &&
+                distanceXZ(shot.mesh.position, player.position) < 102 &&
+                shot.mesh.position.y > player.position.y + 8 && shot.mesh.position.y < player.position.y + 225) {
                 return true;
             }
 
