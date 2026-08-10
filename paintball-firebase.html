@@ -579,6 +579,7 @@
         const crouchRifleDrop = 52;
         const arenaLimit = 2600;
         const playerCollisionRadius = 34;
+        const playerStandingHeight = 175;
         const paintballColor = 0x3b244f;
         const paintballSpeed = 1550;
         const paintballLife = 1.9;
@@ -852,7 +853,7 @@
                 (object) => {
                     blueTemplateLoading = false;
                     blueAvatarTemplate = object;
-                    blueAvatarTemplate.scale.set(1, 1, 1);
+                    normalizeAvatarToGround(blueAvatarTemplate);
                     blueAvatarTemplate.rotation.y = Math.PI;
                     blueAvatarTemplate.traverse((child) => {
                         if (child.isMesh) {
@@ -1442,7 +1443,7 @@
                     if (playerCharacterFile === 'character.fbx') {
                         blueAvatarTemplate = object;
                     }
-                    object.scale.set(1, 1, 1);
+                    normalizeAvatarToGround(object);
                     object.rotation.y = Math.PI;
 
                     object.traverse((child) => {
@@ -1495,7 +1496,7 @@
                 (object) => {
                     redTemplateLoading = false;
                     redAvatar = object;
-                    redAvatar.scale.set(1, 1, 1);
+                    normalizeAvatarToGround(redAvatar);
                     redAvatar.rotation.y = Math.PI;
                     redAvatar.traverse((child) => {
                         if (child.isMesh) {
@@ -1518,6 +1519,27 @@
                     document.getElementById('info').innerText = 'Error al cargar red_character.fbx.';
                 }
             );
+        }
+
+        function normalizeAvatarToGround(targetAvatar) {
+            targetAvatar.scale.set(1, 1, 1);
+            targetAvatar.position.set(0, 0, 0);
+            targetAvatar.updateMatrixWorld(true);
+
+            const initialBounds = new THREE.Box3().setFromObject(targetAvatar);
+            const initialHeight = initialBounds.max.y - initialBounds.min.y;
+            const uniformScale = Number.isFinite(initialHeight) && initialHeight > 0
+                ? playerStandingHeight / initialHeight
+                : 1;
+
+            targetAvatar.scale.setScalar(uniformScale);
+            targetAvatar.updateMatrixWorld(true);
+            const scaledBounds = new THREE.Box3().setFromObject(targetAvatar);
+            targetAvatar.position.y = -scaledBounds.min.y;
+            targetAvatar.userData.standingScale = uniformScale;
+            targetAvatar.userData.standingY = targetAvatar.position.y;
+            targetAvatar.userData.sourceMinY = initialBounds.min.y;
+            targetAvatar.updateMatrixWorld(true);
         }
 
         function loadRifle() {
@@ -2754,9 +2776,15 @@
         function updateCrouchPose(delta) {
             if (!avatar) return;
 
-            const targetScaleY = isCrouching ? crouchScaleY : 1;
+            const standingScale = avatar.userData.standingScale || 1;
+            const sourceMinY = Number.isFinite(avatar.userData.sourceMinY) ? avatar.userData.sourceMinY : 0;
+            const targetScaleY = standingScale * (isCrouching ? crouchScaleY : 1);
             avatar.scale.y = THREE.MathUtils.lerp(avatar.scale.y, targetScaleY, 13 * delta);
-            avatar.position.y = THREE.MathUtils.lerp(avatar.position.y, isCrouching ? -8 : 0, 12 * delta);
+            avatar.position.y = THREE.MathUtils.lerp(
+                avatar.position.y,
+                -sourceMinY * targetScaleY,
+                12 * delta
+            );
         }
 
         function firePaintball() {
@@ -3207,5 +3235,3 @@
     </script>
 </body>
 </html>
-
-
