@@ -19,6 +19,7 @@ OUT_DIR = ROOT / "output" / "pdf"
 IMG_DIR = OUT_DIR / "qr_estudiantes_imagenes"
 PDF_PATH = OUT_DIR / "QR_estudiantes_por_curso.pdf"
 ZIP_PATH = OUT_DIR / "QR_estudiantes_imagenes.zip"
+RESERVE_PDF_PATH = OUT_DIR / "QR_reservas_contingencia.pdf"
 
 
 def safe_name(text):
@@ -122,6 +123,45 @@ def main():
 
     c.save()
 
+    reserves = sorted(
+        (student for student in students if student.get("reserva")),
+        key=lambda student: int(str(student["id"]).split("-")[-1]),
+    )
+    reserve_canvas = canvas.Canvas(str(RESERVE_PDF_PATH), pagesize=A4, pageCompression=1)
+    reserve_canvas.setTitle("QR de reserva para estudiantes nuevos")
+    reserve_canvas.setAuthor("Colegio Brasilia Bosa IED")
+    reserve_cols, reserve_rows = 2, 5
+    reserve_card_w = (page_w - 2 * margin_x) / reserve_cols
+    reserve_card_h = (page_h - 2 * margin_y) / reserve_rows
+    for index, student in enumerate(reserves):
+        col = index % reserve_cols
+        row = index // reserve_cols
+        x = margin_x + col * reserve_card_w
+        y = page_h - margin_y - (row + 1) * reserve_card_h
+        reserve_canvas.setStrokeColor(HexColor("#7B8794"))
+        reserve_canvas.setLineWidth(0.5)
+        reserve_canvas.rect(x, y, reserve_card_w, reserve_card_h)
+        raw_qr = make_qr(str(student["id"]))
+        qr_buffer = io.BytesIO()
+        raw_qr.save(qr_buffer, "PNG")
+        qr_buffer.seek(0)
+        from reportlab.lib.utils import ImageReader
+        reserve_qr_size = 34 * mm
+        reserve_canvas.drawImage(ImageReader(qr_buffer), x + 5 * mm, y + 9 * mm, reserve_qr_size, reserve_qr_size, preserveAspectRatio=True)
+        text_x = x + 44 * mm
+        reserve_canvas.setFillColor(HexColor("#172B4D"))
+        reserve_canvas.setFont("Helvetica-Bold", 11)
+        reserve_canvas.drawString(text_x, y + reserve_card_h - 11 * mm, student["nombre"])
+        reserve_canvas.setFont("Helvetica", 8)
+        reserve_canvas.setFillColor(HexColor("#52606D"))
+        reserve_canvas.drawString(text_x, y + reserve_card_h - 17 * mm, f'ID: {student["id"]}')
+        reserve_canvas.setFillColor(HexColor("#172B4D"))
+        reserve_canvas.drawString(text_x, y + reserve_card_h - 29 * mm, "Nombre real:")
+        reserve_canvas.line(text_x, y + reserve_card_h - 32 * mm, x + reserve_card_w - 5 * mm, y + reserve_card_h - 32 * mm)
+        reserve_canvas.drawString(text_x, y + reserve_card_h - 42 * mm, "Curso:")
+        reserve_canvas.line(text_x, y + reserve_card_h - 45 * mm, x + reserve_card_w - 5 * mm, y + reserve_card_h - 45 * mm)
+    reserve_canvas.save()
+
     with zipfile.ZipFile(ZIP_PATH, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(IMG_DIR.glob("*.png")):
             archive.write(path, arcname=path.name)
@@ -131,6 +171,8 @@ def main():
         "pages": (len(students) + cols * rows - 1) // (cols * rows),
         "pdf": str(PDF_PATH),
         "zip": str(ZIP_PATH),
+        "reserve_pdf": str(RESERVE_PDF_PATH),
+        "reserves": len(reserves),
         "images": len(list(IMG_DIR.glob("*.png"))),
     }, ensure_ascii=False))
 
