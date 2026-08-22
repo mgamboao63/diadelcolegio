@@ -400,7 +400,7 @@
         <div class="join-card">
           <div style="font-size:2rem">♠</div>
           <h2>BRASILIA BORDERLAND</h2>
-          <p>Ingresa tu nickname para ocupar un puesto en la parrilla. Hay 10 cupos.</p>
+          <p>Ingresa tu nickname para ocupar un puesto en la parrilla. Hay 40 cupos.</p>
           <input data-nickname maxlength="18" autocomplete="off" placeholder="Tu nickname" />
           <button type="button" data-join>ENTRAR A LA CARRERA</button>
           <div class="join-status" data-join-status>Conectando a la sala...</div>
@@ -456,7 +456,7 @@
             </div>
             <div class="hud-card">
               <span class="title">Posición</span>
-              <span class="value" style="color: #38bdf8;"><strong data-pos>1</strong><span style="font-size:0.7rem;">/10</span></span>
+              <span class="value" style="color: #38bdf8;"><strong data-pos>1</strong><span style="font-size:0.7rem;">/40</span></span>
             </div>
             <div class="hud-card">
               <span class="title">Tiempo</span>
@@ -471,7 +471,7 @@
         </div>
       </div>
 
-      <canvas tabindex="0" role="img" aria-label="Juego de Carreras 3D Laguna Seca F1 con 10 Bólidos"></canvas>
+      <canvas tabindex="0" role="img" aria-label="Juego de Carreras 3D Laguna Seca F1 con hasta 40 bólidos"></canvas>
     </div>
 
     <div class="touch-row" aria-label="Controles alternos">
@@ -541,8 +541,8 @@
       const remoteCars = new Map();
       let roomData = { players:{}, game:{phase:'lobby',cycle:0} }, judgeAuthorized = false, lastGameCycle = 0;
 
-      const world = { w: 15120, h: 9632 };
-      const roadWidth = 390;
+      const world = { w: 22000, h: 14000 };
+      const roadWidth = 520;
       const lapsToWin = 3;
 
       const route = [
@@ -635,7 +635,7 @@
       function renderJudge() {
         const count = Object.keys(roomData.players || {}).length;
         const phase = roomData.game?.phase || 'lobby';
-        judgeInfo.textContent = `${count}/10 jugadores conectados · ${phase === 'lobby' ? 'Esperando salida' : phase === 'countdown' ? 'Semáforo en marcha' : 'Carrera en curso'}`;
+        judgeInfo.textContent = `${count}/40 jugadores conectados · ${phase === 'lobby' ? 'Esperando salida' : phase === 'countdown' ? 'Semáforo en marcha' : 'Carrera en curso'}`;
         judgeStartBtn.disabled = count === 0 || phase !== 'lobby';
       }
 
@@ -655,7 +655,7 @@
       }
 
       async function judgeClearRoom() {
-        if (!judgeAuthorized || !roomRef || !confirm('¿Vaciar la sala y borrar los 10 cupos?')) return;
+        if (!judgeAuthorized || !roomRef || !confirm('¿Vaciar la sala y borrar los 40 cupos?')) return;
         await roomRef.set({ players:{}, game:{phase:'lobby',cycle:(roomData.game?.cycle||0)+1} });
       }
 
@@ -671,15 +671,15 @@
             if (room.game && room.game.phase && room.game.phase !== 'lobby') return;
             if (room.players[currentUid]) return room;
             const occupied = new Set(Object.values(room.players).map(player => player.slot));
-            let slot = 1; while (occupied.has(slot) && slot <= 10) slot += 1;
-            if (slot > 10) return;
+            let slot = 1; while (occupied.has(slot) && slot <= 40) slot += 1;
+            if (slot > 40) return;
             const start = gridStartForSlot(slot);
             room.players[currentUid] = { nickname, slot, x:start.x, z:start.z, angle:start.angle, progress:0, lap:1, finished:false, joinedAt:Date.now(), updatedAt:Date.now() };
             return room;
           });
           const room = result.snapshot.val();
           const mine = room && room.players && room.players[currentUid];
-          if (!result.committed || !mine) { joinStatus.textContent = room?.game?.phase && room.game.phase !== 'lobby' ? 'La carrera ya está en curso. Espera la siguiente salida.' : 'La parrilla ya tiene 10 jugadores.'; joinBtn.disabled=false; return; }
+          if (!result.committed || !mine) { joinStatus.textContent = room?.game?.phase && room.game.phase !== 'lobby' ? 'La carrera ya está en curso. Espera la siguiente salida.' : 'La parrilla ya tiene 40 jugadores.'; joinBtn.disabled=false; return; }
           localSlot = mine.slot; localNickname = nickname; registered = true;
           player.slot = localSlot;
           db.ref(`carrerasLagunaSeca/${roomId}/players/${currentUid}`).onDisconnect().remove();
@@ -722,7 +722,7 @@
       }
 
       function publishLocalPlayer(now) {
-        // No se publican posiciones durante el registro: asi hasta 10 jugadores
+        // No se publican posiciones durante el registro: asi hasta 40 jugadores
         // pueden reservar su puesto sin colisiones de transacciones en Firebase.
         if (!registered || !running || !db || !player || now-lastNetworkPush<90) return;
         lastNetworkPush=now;
@@ -979,8 +979,8 @@
 
       function init3D() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x38bdf8);
-        scene.fog = new THREE.FogExp2(0x38bdf8, 0.00008);
+        scene.background = new THREE.Color(0x8ed8ff);
+        scene.fog = new THREE.FogExp2(0x8ed8ff, 0.000055);
 
         const aspect = stage.clientWidth / stage.clientHeight;
         camera = new THREE.PerspectiveCamera(60, aspect, 1, 60000);
@@ -989,8 +989,11 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.shadowMap.enabled = true;
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.68);
         scene.add(ambientLight);
+
+        const hemiLight = new THREE.HemisphereLight(0xc7ecff, 0x3f6212, 0.72);
+        scene.add(hemiLight);
 
         const dirLight = new THREE.DirectionalLight(0xfffaed, 1.2);
         dirLight.position.set(7000, 12000, 7000);
@@ -998,7 +1001,7 @@
         scene.add(dirLight);
 
         const groundGeo = new THREE.PlaneGeometry(world.w * 3, world.h * 3);
-        const groundMat = new THREE.MeshLambertMaterial({ color: 0x15803d });
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x4d7c0f });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         ground.position.set(world.w / 2, -2, world.h / 2);
@@ -1106,10 +1109,10 @@
 
         for (let i = 0; i < trackPoints.length; i += 10) {
           const pt = trackPoints[i];
-          const distOut = roadWidth * (0.75 + Math.random() * 1.5);
+          const distOut = roadWidth * (1.7 + Math.random() * 2.2);
           
           [-1, 1].forEach(side => {
-            if (Math.random() > 0.25) {
+            if (Math.random() > 0.32) {
               const tree = new THREE.Group();
               const trunk = new THREE.Mesh(trunkGeo, trunkMat);
               trunk.position.y = 22.5;
@@ -1118,8 +1121,11 @@
               foliage.position.y = 85;
               tree.add(foliage);
 
-              const px = pt.pos.x + pt.normal.x * distOut * side + (Math.random() - 0.5) * 80;
-              const pz = pt.pos.z + pt.normal.z * distOut * side + (Math.random() - 0.5) * 80;
+              const px = pt.pos.x + pt.normal.x * distOut * side + (Math.random() - 0.5) * 55;
+              const pz = pt.pos.z + pt.normal.z * distOut * side + (Math.random() - 0.5) * 55;
+              const nearest = nearestOnTrack(px, pz);
+              if (nearest && nearest.d < roadWidth * 1.15) return;
+
               tree.position.set(px, 0, pz);
               const scale = 0.8 + Math.random() * 0.7;
               tree.scale.set(scale, scale, scale);
@@ -1193,6 +1199,9 @@
       }
 
       function build3DMeshTrack() {
+        buildOffsetRibbon(-roadWidth * 0.82, -roadWidth * 0.50, 0xb08968, -0.08);
+        buildOffsetRibbon(roadWidth * 0.50, roadWidth * 0.82, 0xb08968, -0.08);
+
         const roadVertices = [];
         const roadIndices = [];
 
@@ -1213,11 +1222,37 @@
         roadGeo.setIndex(roadIndices);
         roadGeo.computeVertexNormals();
 
-        const roadMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x2f343b, roughness: 0.86, metalness: 0.02 });
         scene.add(new THREE.Mesh(roadGeo, roadMat));
 
         buildCleanWall('leftPos', 0xef4444);
         buildCleanWall('rightPos', 0xef4444);
+      }
+
+      function buildOffsetRibbon(offsetA, offsetB, colorHex, y) {
+        const vertices = [];
+        const indices = [];
+
+        for (let i = 0; i < trackPoints.length; i++) {
+          const pt = trackPoints[i];
+          const a = pt.pos.clone().addScaledVector(pt.normal, offsetA);
+          const b = pt.pos.clone().addScaledVector(pt.normal, offsetB);
+          vertices.push(a.x, y, a.z, b.x, y, b.z);
+
+          if (i < trackPoints.length - 1) {
+            const base = i * 2;
+            indices.push(base, base + 1, base + 2);
+            indices.push(base + 1, base + 3, base + 2);
+          }
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+
+        const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.95, side: THREE.DoubleSide });
+        scene.add(new THREE.Mesh(geo, mat));
       }
 
       function buildCleanWall(sideKey, colorHex) {
@@ -1302,6 +1337,7 @@
           meshGroup: playerObj.group, mainBody: playerObj.mainBody,
           x: 0, z: 0, vx: 0, vz: 0, angle: 0,
           progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false,
+          raceDistance: 0, completedLaps: 0, finalLapAnnounced: false,
           item: null, itemCharges: 0, turboTimer: 0, maxSpeed: 5300
         };
         if (isLiveMode) player.meshGroup.visible = false;
@@ -1318,6 +1354,9 @@
         player.angle = gridPt.angle;
         player.progress = gridProgress;
         player.previousProgress = gridProgress;
+        player.raceDistance = 0;
+        player.completedLaps = 0;
+        player.finalLapAnnounced = false;
 
         raceTime = 0;
         running = false;
@@ -1593,12 +1632,27 @@
         player.previousProgress = player.progress;
         player.progress = nearest.progress;
 
-        if (player.previousProgress > totalLength * 0.85 && player.progress < totalLength * 0.15 && running) {
-          player.lap += 1;
-          if (player.lap === lapsToWin) {
+        if (running) {
+          let progressDelta = player.progress - player.previousProgress;
+          if (progressDelta < -totalLength * 0.5) progressDelta += totalLength;
+          if (progressDelta > totalLength * 0.5) progressDelta -= totalLength;
+
+          // Solo el avance real suma distancia de carrera. Retroceder sobre la
+          // línea de meta ya no permite fabricar vueltas.
+          if (progressDelta > 0) {
+            player.raceDistance += progressDelta;
+          }
+
+          const completedLaps = Math.floor(player.raceDistance / totalLength);
+          player.completedLaps = completedLaps;
+          player.lap = Math.min(lapsToWin + 1, completedLaps + 1);
+
+          if (!player.finalLapAnnounced && completedLaps === lapsToWin - 1) {
+            player.finalLapAnnounced = true;
             speakVoice("Final Lap!");
           }
-          if (player.lap > lapsToWin) {
+
+          if (completedLaps >= lapsToWin) {
             player.finished = true;
             checkRaceEnd();
           }
@@ -1623,6 +1677,7 @@
       function getRaceScore(car) {
         // Los bots conservan una distancia acumulada real, incluso cuando parten
         // detrás de la meta. El jugador usa vueltas + progreso sobre la pista.
+        if (car === player) return car.raceDistance;
         return car.isBot ? car.raceDistance : (car.lap - 1) * totalLength + car.progress;
       }
 
@@ -1631,7 +1686,7 @@
 
         const playerRank = allCars.indexOf(player) + 1;
         victoryHeading.textContent = playerRank === 1 ? '¡VICTORIA!' : `¡CARRERA FINALIZADA! (${playerRank}º PUESTO)`;
-        victoryStats.textContent = `Tiempo Total: ${raceTime.toFixed(1)}s\nClasificaste en la posición #${playerRank} de 10 bólidos`;
+        victoryStats.textContent = `Tiempo Total: ${raceTime.toFixed(1)}s\nClasificaste en la posición #${playerRank} de ${allCars.length} bólidos`;
         victoryModal.classList.add('show');
       }
 
