@@ -469,11 +469,14 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+        import { Octree } from 'three/addons/math/Octree.js';
+        import { Capsule } from 'three/addons/math/Capsule.js';
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
         import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
         import { getDatabase, ref, onValue, runTransaction, set, update, onDisconnect, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js';
 
         let scene, camera, renderer, mixer, player, avatar, blueAvatarTemplate, redAvatar, rifle, walkAction, sharedWalkClip, redWalkClip, aimGuideLine, aimGuidePoint, cityModel;
+        let cityOctree = null;
         let leftHandBone, rightHandBone, rifleHandRestCenter;
         const rifleIKs = [];
         let idlePoseTime = 0;
@@ -506,6 +509,7 @@
         const clock = new THREE.Clock();
         const keys = {};
         const colliders = [];
+        const cityGroundRay = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
         const paintballs = [];
         const paintSplats = [];
         const teamAvatars = [];
@@ -548,7 +552,23 @@
             { name: 'Cometa', file: 'avatars/cometa.png', color: '#8b5cf6' },
             { name: 'Titan', file: 'avatars/titan.png', color: '#0f766e' },
             { name: 'Nebula', file: 'avatars/nebula.png', color: '#6366f1' },
-            { name: 'Vector', file: 'avatars/vector.png', color: '#06b6d4' }
+            { name: 'Vector', file: 'avatars/vector.png', color: '#06b6d4' },
+            { name: 'Kitsune', file: 'avatars/kitsune.png', color: '#a855f7' },
+            { name: 'Leonidas', file: 'avatars/leonidas.png', color: '#2563eb' },
+            { name: 'Fenrir', file: 'avatars/fenrir.png', color: '#38bdf8' },
+            { name: 'Luna', file: 'avatars/luna.png', color: '#ec4899' },
+            { name: 'Drax', file: 'avatars/drax.png', color: '#f97316' },
+            { name: 'Nyx', file: 'avatars/nyx.png', color: '#8b5cf6' },
+            { name: 'Alistair', file: 'avatars/alistair.png', color: '#14b8a6' },
+            { name: 'Kaelen', file: 'avatars/kaelen.png', color: '#64748b' },
+            { name: 'Zara', file: 'avatars/zara.png', color: '#06b6d4' },
+            { name: 'Jax', file: 'avatars/jax.png', color: '#92400e' },
+            { name: 'Fae', file: 'avatars/fae.png', color: '#22c55e' },
+            { name: 'Rocco', file: 'avatars/rocco.png', color: '#475569' },
+            { name: 'Rina', file: 'avatars/rina.png', color: '#16a34a' },
+            { name: 'Seth', file: 'avatars/seth.png', color: '#d97706' },
+            { name: 'Ivy', file: 'avatars/ivy.png', color: '#15803d' },
+            { name: 'Bolt', file: 'avatars/bolt.png', color: '#eab308' }
         ];
         const rosterMarkers = [];
         const blueFlagPosition = new THREE.Vector3();
@@ -2143,6 +2163,9 @@
                     if (child.material) child.material.needsUpdate = true;
                 });
                 scene.add(cityModel);
+                cityModel.updateMatrixWorld(true);
+                cityOctree = new Octree();
+                cityOctree.fromGraphNode(cityModel);
                 addCityColliders(cityModel);
                 cityReady = true;
                 updateGameStatus('Ciudad lista. Espera al juez.');
@@ -2674,6 +2697,35 @@
             return getHitCollider(position, radius, ignoredColliders) !== null;
         }
 
+        function getCityGroundHeight(position) {
+            if (!cityOctree) return 0;
+            cityGroundRay.origin.set(position.x, position.y + 220, position.z);
+            const hit = cityOctree.rayIntersect(cityGroundRay);
+            if (hit && hit.distance <= 460 && hit.position.y <= position.y + 45) {
+                const normal = hit.triangle.getNormal(new THREE.Vector3());
+                if (Math.abs(normal.y) > 0.45) return hit.position.y + 0.8;
+            }
+            return 0;
+        }
+
+        function resolveCityGeometryCollision(position) {
+            if (!cityOctree) return position;
+            const height = isCrouching ? playerStandingHeight * crouchScaleY : playerStandingHeight;
+            const radius = Math.min(playerCollisionRadius, height * 0.24);
+
+            for (let pass = 0; pass < 4; pass++) {
+                const capsule = new Capsule(
+                    new THREE.Vector3(position.x, position.y + radius + 1, position.z),
+                    new THREE.Vector3(position.x, position.y + Math.max(radius + 2, height - radius), position.z),
+                    radius
+                );
+                const result = cityOctree.capsuleIntersect(capsule);
+                if (!result || result.depth <= 0.001) break;
+                position.addScaledVector(result.normal, result.depth + 0.5);
+            }
+            return position;
+        }
+
         function movePlayerWithCollision(displacement) {
             const maxStep = 18;
             const steps = Math.max(1, Math.ceil(displacement.length() / maxStep));
@@ -2690,6 +2742,7 @@
             const escapeColliders = getOverlappedLowColliders(current);
 
             if (!isBlockedPosition(next, playerCollisionRadius, escapeColliders)) {
+                resolveCityGeometryCollision(next);
                 player.position.copy(next);
                 return;
             }
@@ -2697,12 +2750,14 @@
             const xOnly = current.clone();
             xOnly.x += displacement.x;
             if (!isBlockedPosition(xOnly, playerCollisionRadius, escapeColliders)) {
+                resolveCityGeometryCollision(xOnly);
                 player.position.copy(xOnly);
             }
 
             const zOnly = player.position.clone();
             zOnly.z += displacement.z;
             if (!isBlockedPosition(zOnly, playerCollisionRadius, escapeColliders)) {
+                resolveCityGeometryCollision(zOnly);
                 player.position.copy(zOnly);
             }
         }
@@ -2767,8 +2822,15 @@
             verticalVelocity -= gravity * delta;
             player.position.y += verticalVelocity * delta;
 
-            if (player.position.y <= 0) {
-                player.position.y = 0;
+            const groundHeight = getCityGroundHeight(player.position);
+            if (player.position.y <= groundHeight) {
+                player.position.y = groundHeight;
+                verticalVelocity = 0;
+            }
+
+            const beforeResolveY = player.position.y;
+            resolveCityGeometryCollision(player.position);
+            if (Math.abs(player.position.y - beforeResolveY) > 0.01) {
                 verticalVelocity = 0;
             }
         }
