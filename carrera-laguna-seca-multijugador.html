@@ -564,6 +564,22 @@
       const world = { w: 22000, h: 14000 };
       const roadWidth = 520;
       const lapsToWin = 3;
+      const kartTuning = {
+        coastDrag: 0.025,
+        rollingResistance: 0.9996,
+        brakeForce: 4300,
+        wallSpeedLoss: 0.46,
+        trafficSpeedLoss: 0.38,
+        driftGripBase: 0.58,
+        driftGripSteerPenalty: 0.34,
+        tightCurveSlowdown: 0.46,
+        homingRange: 5200,
+        homingTurnRate: 8.5,
+        homingSpeed: 7200,
+        bulletLife: 3.8,
+        impactSpinTime: 1.15,
+        impactSlowTime: 1.75
+      };
 
       const route = [
         [0.38, 0.91], [0.54, 0.91], [0.68, 0.87], [0.83, 0.78],
@@ -651,6 +667,8 @@
         if (registered && player && roomData.players[currentUid]) {
           const mine = roomData.players[currentUid];
           if (Number(mine.finishPosition) > 0) player.finishPosition = Number(mine.finishPosition);
+          const impactAge = Number(mine.impactAt) ? Date.now() + serverTimeOffset - Number(mine.impactAt) : Infinity;
+          if (mine.impactId && mine.impactId !== player.lastImpactId && impactAge < 2500) applyIncomingImpact(mine);
         }
         if (registered && currentUid && !roomData.players[currentUid] && !isJudgeMode) {
           registered=false; localSlot=null; joinScreen.classList.remove('hidden'); joinStatus.textContent='El juez reinició la sala. Registra tu nickname de nuevo.';
@@ -741,6 +759,7 @@
           Object.values(room.players).forEach(p => {
             p.finished=false; p.finishPosition=null; p.finishedAt=null; p.finishElapsedMs=null;
             p.progress=0; p.raceDistance=0; p.lap=1;
+            p.impactId=null; p.impactBy=null; p.impactAt=null;
           });
           room.game={...room.game,phase:'countdown',startAt:Date.now()+serverTimeOffset+5000,finishCounter:0};
           return room;
@@ -754,6 +773,7 @@
           Object.values(room.players).forEach(p => {
             p.finished=false; p.finishPosition=null; p.finishedAt=null; p.finishElapsedMs=null;
             p.progress=0; p.raceDistance=0; p.lap=1;
+            p.impactId=null; p.impactBy=null; p.impactAt=null;
           });
           room.game={phase:'lobby',cycle:(room.game?.cycle||0)+1,finishCounter:0};
           return room;
@@ -780,7 +800,7 @@
             let slot = 1; while (occupied.has(slot) && slot <= 40) slot += 1;
             if (slot > 40) return;
             const start = gridStartForSlot(slot);
-            room.players[currentUid] = { nickname, slot, x:start.x, z:start.z, angle:start.angle, progress:0, raceDistance:0, lap:1, finished:false, joinedAt:Date.now(), updatedAt:Date.now() };
+            room.players[currentUid] = { nickname, slot, x:start.x, z:start.z, angle:start.angle, progress:0, raceDistance:0, lap:1, finished:false, impactId:null, impactBy:null, impactAt:null, joinedAt:Date.now(), updatedAt:Date.now() };
             return room;
           });
           const room = result.snapshot.val();
@@ -805,12 +825,12 @@
           let car = remoteCars.get(uid);
           if (!car) {
             const model = createCarModel(remoteColor(data.slot));
-            car = { uid, name:data.nickname||'Jugador', slot:data.slot||10, isRemote:true, meshGroup:model.group, mainBody:model.mainBody, x:Number(data.x)||0,z:Number(data.z)||0,angle:Number(data.angle)||0,progress:0,raceDistance:0,lap:1,finished:false,finishPosition:0, targetX:Number(data.x)||0,targetZ:Number(data.z)||0,targetAngle:Number(data.angle)||0 };
+            car = { uid, name:data.nickname||'Jugador', slot:data.slot||10, isRemote:true, meshGroup:model.group, mainBody:model.mainBody, x:Number(data.x)||0,z:Number(data.z)||0,angle:Number(data.angle)||0,progress:0,raceDistance:0,lap:1,finished:false,finishPosition:0, targetX:Number(data.x)||0,targetZ:Number(data.z)||0,targetAngle:Number(data.angle)||0, impactAt:0 };
             remoteCars.set(uid,car); allCars.push(car);
           }
           car.name=data.nickname||car.name; car.slot=data.slot||car.slot;
           car.targetX=Number(data.x)||0; car.targetZ=Number(data.z)||0; car.targetAngle=Number(data.angle)||0;
-          car.progress=Number(data.progress)||0; car.raceDistance=Number(data.raceDistance)||0; car.lap=Number(data.lap)||1; car.finished=!!data.finished; car.finishPosition=Number(data.finishPosition)||0;
+          car.progress=Number(data.progress)||0; car.raceDistance=Number(data.raceDistance)||0; car.lap=Number(data.lap)||1; car.finished=!!data.finished; car.finishPosition=Number(data.finishPosition)||0; car.impactAt=Number(data.impactAt)||0;
         });
         remoteCars.forEach((car,uid) => {
           if (!present.has(uid)) { scene.remove(car.meshGroup); remoteCars.delete(uid); allCars=allCars.filter(item=>item!==car); }
@@ -823,7 +843,12 @@
           car.z += (car.targetZ-car.z)*Math.min(1,dt*12);
           let delta=car.targetAngle-car.angle; while(delta>Math.PI)delta-=Math.PI*2; while(delta<-Math.PI)delta+=Math.PI*2;
           car.angle += delta*Math.min(1,dt*12);
-          car.meshGroup.position.set(car.x,0,car.z); car.meshGroup.rotation.y=-car.angle+Math.PI/2;
+          const impactAge = car.impactAt ? Date.now() + serverTimeOffset - car.impactAt : 9999;
+          const impactSpin = impactAge < 1200 ? THREE.MathUtils.clamp(1 - impactAge / 1200, 0, 1) : 0;
+          car.meshGroup.position.set(car.x, Math.sin(impactSpin * Math.PI) * 12, car.z);
+          car.meshGroup.rotation.y = -car.angle + Math.PI / 2 + impactSpin * Math.PI * 2.4;
+          car.meshGroup.rotation.z = Math.sin(impactSpin * Math.PI) * 0.95;
+          car.mainBody.material.color.setHex(impactSpin > 0 ? 0xffff00 : remoteColor(car.slot));
         });
       }
 
@@ -833,6 +858,22 @@
         if (!registered || !running || !db || !player || now-lastNetworkPush<90) return;
         lastNetworkPush=now;
         db.ref(`carrerasLagunaSeca/${roomId}/players/${currentUid}`).update({ nickname:player.name, slot:localSlot, x:player.x, z:player.z, angle:player.angle, progress:player.progress, raceDistance:player.raceDistance, lap:player.lap, finished:player.finished, updatedAt:firebase.database.ServerValue.TIMESTAMP });
+      }
+
+      function applyIncomingImpact(data) {
+        if (!player || player.finished) return;
+        player.lastImpactId = data.impactId;
+        player.hitFlash = 1.15;
+        player.spinTimer = kartTuning.impactSpinTime;
+        player.impactSlowTimer = kartTuning.impactSlowTime;
+        player.vx *= 0.32;
+        player.vz *= 0.32;
+        const sideways = Math.random() > 0.5 ? 1 : -1;
+        const sideX = -Math.sin(player.angle);
+        const sideZ = Math.cos(player.angle);
+        player.vx += sideX * sideways * 900;
+        player.vz += sideZ * sideways * 900;
+        playSoundEffect('skid');
       }
 
       function initAudio() {
@@ -1246,9 +1287,9 @@
         const boxGeo = new THREE.BoxGeometry(34, 34, 34);
         const boxMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.5 });
 
-        for (let p = 0.06; p < 0.96; p += 0.09) {
+        for (let p = 0.045; p < 0.98; p += 0.065) {
           const pt = getPointAtProgress(totalLength * p);
-          [-0.28, 0, 0.28].forEach(offsetRatio => {
+          [-0.34, -0.12, 0.12, 0.34].forEach(offsetRatio => {
             const mesh = new THREE.Mesh(boxGeo, boxMat);
             const pos = pt.pos.clone().addScaledVector(pt.normal, roadWidth * offsetRatio);
             mesh.position.set(pos.x, 24, pos.z);
@@ -1419,12 +1460,52 @@
         mesh.position.set(bx, 12, bz);
         scene.add(mesh);
 
-        const bSpeed = 6500;
+        const target = findHomingTarget();
+        const bSpeed = kartTuning.homingSpeed;
         bullets.push({
+          id: `${currentUid || 'local'}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
           mesh,
           vx: Math.cos(player.angle) * bSpeed,
           vz: Math.sin(player.angle) * bSpeed,
-          life: 2.8
+          life: kartTuning.bulletLife,
+          targetUid: target ? target.uid : null
+        });
+      }
+
+      function findHomingTarget() {
+        if (!player || !remoteCars.size) return null;
+        const forwardX = Math.cos(player.angle);
+        const forwardZ = Math.sin(player.angle);
+        const sideX = -forwardZ;
+        const sideZ = forwardX;
+        let best = null;
+        let bestScore = Infinity;
+        remoteCars.forEach(car => {
+          if (car.finished) return;
+          const dx = car.x - player.x;
+          const dz = car.z - player.z;
+          const forwardDistance = dx * forwardX + dz * forwardZ;
+          if (forwardDistance < 120 || forwardDistance > kartTuning.homingRange) return;
+          const lateralDistance = Math.abs(dx * sideX + dz * sideZ);
+          if (lateralDistance > roadWidth * 1.7) return;
+          const score = forwardDistance + lateralDistance * 1.4;
+          if (score < bestScore) {
+            bestScore = score;
+            best = car;
+          }
+        });
+        return best;
+      }
+
+      function registerRaceHit(targetUid, shotId) {
+        if (!targetUid || !shotId || !roomRef || !currentUid) return;
+        roomRef.child(`players/${targetUid}`).transaction(target => {
+          if (!target || target.finished || target.impactId === shotId) return target;
+          target.impactId = shotId;
+          target.impactBy = currentUid;
+          target.impactAt = Date.now() + serverTimeOffset;
+          target.updatedAt = Date.now() + serverTimeOffset;
+          return target;
         });
       }
 
@@ -1444,7 +1525,8 @@
           x: 0, z: 0, vx: 0, vz: 0, angle: 0,
           progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false, finishPosition: 0,
           raceDistance: 0, completedLaps: 0, finalLapAnnounced: false,
-          item: null, itemCharges: 0, turboTimer: 0, maxSpeed: 5300
+          item: null, itemCharges: 0, turboTimer: 0, maxSpeed: 5300,
+          spinTimer: 0, impactSlowTimer: 0, lastImpactId: null
         };
         if (isLiveMode) player.meshGroup.visible = false;
         else allCars.push(player);
@@ -1527,8 +1609,8 @@
               b.mesh.visible = false;
               b.respawnTimer = 4;
 
-              player.item = Math.random() > 0.5 ? 'turbo' : 'shoot';
-              player.itemCharges = 3;
+              player.item = Math.random() < 0.72 ? 'shoot' : 'turbo';
+              player.itemCharges = player.item === 'shoot' ? 4 : 2;
               playSoundEffect('box');
 
               itemCardEl.classList.add('pulse');
@@ -1545,16 +1627,34 @@
 
         for (let i = bullets.length - 1; i >= 0; i--) {
           const b = bullets[i];
+          const target = b.targetUid ? remoteCars.get(b.targetUid) : null;
+          if (target && !target.finished) {
+            const dx = target.x - b.mesh.position.x;
+            const dz = target.z - b.mesh.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist > 1) {
+              const desiredVx = (dx / dist) * kartTuning.homingSpeed;
+              const desiredVz = (dz / dist) * kartTuning.homingSpeed;
+              const turn = Math.min(1, kartTuning.homingTurnRate * dt);
+              b.vx += (desiredVx - b.vx) * turn;
+              b.vz += (desiredVz - b.vz) * turn;
+            }
+          }
           b.mesh.position.x += b.vx * dt;
           b.mesh.position.z += b.vz * dt;
           b.life -= dt;
 
           let hit = false;
+          if (target && !target.finished && Math.hypot(b.mesh.position.x - target.x, b.mesh.position.z - target.z) < 86) {
+            registerRaceHit(target.uid, b.id);
+            target.impactAt = Date.now() + serverTimeOffset;
+            hit = true;
+          }
           for (let bot of bots) {
             if (!bot.finished && Math.hypot(b.mesh.position.x - bot.x, b.mesh.position.z - bot.z) < 52) {
-              // El disparo detiene por completo al bot durante un segundo.
+              // El disparo detiene por completo al bot durante un momento.
               // Como los bots avanzan por raceDistance, frenar vx/vz no tendría efecto.
-              bot.stunTimer = 1.0;
+              bot.stunTimer = 1.25;
               bot.currentSpeed = 0;
               bot.hitFlash = 1.0;
               hit = true;
@@ -1582,17 +1682,18 @@
           
           const isAhead = dx * forwardX + dz * forwardZ > 0;
           if (isAhead) {
-            // Choca con otro vehículo: se pierde velocidad[cite: 1]
-            player.vx *= 0.65;
-            player.vz *= 0.65;
-            player.x -= forwardX * 16;
-            player.z -= forwardZ * 16;
+            // Chocar de frente cuesta velocidad de verdad, como en un kart.
+            player.vx *= kartTuning.trafficSpeedLoss;
+            player.vz *= kartTuning.trafficSpeedLoss;
+            player.impactSlowTimer = Math.max(player.impactSlowTimer || 0, 0.55);
+            player.x -= forwardX * 28;
+            player.z -= forwardZ * 28;
           } else {
             // Te golpean de atrás: ganas un pequeño impulso[cite: 1]
-            player.vx += forwardX * 850;
-            player.vz += forwardZ * 850;
+            player.vx += forwardX * 520;
+            player.vz += forwardZ * 520;
             const speed = Math.hypot(player.vx, player.vz);
-            const limit = (player.turboTimer > 0 ? 6800 : player.maxSpeed) * 1.35;
+            const limit = (player.turboTimer > 0 ? 6800 : player.maxSpeed) * 1.18;
             if (speed > limit) {
               player.vx = (player.vx / speed) * limit;
               player.vz = (player.vz / speed) * limit;
@@ -1684,8 +1785,15 @@
         let throttle = keys.up ? 1 : 0;
         let brake = keys.down ? 1 : 0;
         const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+        const steerIntensity = Math.abs(steer);
 
         if (!running || player.finished) { throttle = 0; brake = 0; }
+        const spinActive = player.spinTimer > 0;
+        if (spinActive) {
+          player.spinTimer = Math.max(0, player.spinTimer - dt);
+          player.impactSlowTimer = Math.max(player.impactSlowTimer || 0, 0.45);
+        }
+        if (player.impactSlowTimer > 0) player.impactSlowTimer = Math.max(0, player.impactSlowTimer - dt);
 
         let activeTurboForce = 0;
         if (player.turboTimer > 0) {
@@ -1703,32 +1811,50 @@
         const reversing = brake && forwardSpeed < 100;
         const activeBrake = brake && !reversing ? brake : 0;
         const reverse = reversing ? brake : 0;
-        const grip = Math.max(0.15, (1.2 - speed / 8000));
-        const steerRate = 3.0 / (1 + speed / 3500);
+        const here = getPointAtProgress(player.progress || 0);
+        const ahead = getPointAtProgress((player.progress || 0) + 420);
+        let curveAngle = Math.atan2(
+          here.tangent.x * ahead.tangent.z - here.tangent.z * ahead.tangent.x,
+          here.tangent.x * ahead.tangent.x + here.tangent.z * ahead.tangent.z
+        );
+        const curveFactor = THREE.MathUtils.clamp(Math.abs(curveAngle) / 0.74, 0, 1);
+        const grip = THREE.MathUtils.clamp(kartTuning.driftGripBase - speed / 10000 - steerIntensity * kartTuning.driftGripSteerPenalty, 0.12, 0.62);
+        const steerRate = (3.45 + curveFactor * 0.85) / (1 + speed / 4200);
 
         if (Math.abs(lateralSpeed) > 1200 && speed > 2000 && Math.random() < 0.2) {
           playSoundEffect('skid');
         }
 
-        player.angle += steer * steerRate * dt * Math.min(1, speed / 250 + 0.35);
+        player.angle += steer * steerRate * dt * Math.min(1.12, speed / 260 + 0.35);
+        if (spinActive) player.angle += dt * 9.5;
 
         const accelForce = 2800 + activeTurboForce;
-        player.vx += forwardX * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * dt;
-        player.vz += forwardZ * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * dt;
+        const impactThrottleScale = player.impactSlowTimer > 0 ? 0.42 : 1;
+        player.vx += forwardX * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * impactThrottleScale * dt;
+        player.vz += forwardZ * (throttle || (player.turboTimer > 0 ? 1 : 0)) * accelForce * impactThrottleScale * dt;
 
-        player.vx -= forwardX * activeBrake * 3500 * dt * Math.sign(forwardSpeed || 1);
-        player.vz -= forwardZ * activeBrake * 3500 * dt * Math.sign(forwardSpeed || 1);
+        player.vx -= forwardX * activeBrake * kartTuning.brakeForce * dt * Math.sign(forwardSpeed || 1);
+        player.vz -= forwardZ * activeBrake * kartTuning.brakeForce * dt * Math.sign(forwardSpeed || 1);
         player.vx -= forwardX * reverse * 1200 * dt;
         player.vz -= forwardZ * reverse * 1200 * dt;
-        player.vx -= sideX * lateralSpeed * grip * 12 * dt;
-        player.vz -= sideZ * lateralSpeed * grip * 12 * dt;
+        player.vx -= sideX * lateralSpeed * grip * 7.8 * dt;
+        player.vz -= sideZ * lateralSpeed * grip * 7.8 * dt;
 
-        const airDrag = 1.0 + Math.pow(speed / 5000, 1.4) * 0.1;
-        const rollingResistance = 0.999;
+        const curveLimit = player.maxSpeed * (1 - curveFactor * kartTuning.tightCurveSlowdown);
+        if (curveFactor > 0.45 && speed > curveLimit) {
+          const curveBrake = (curveFactor - 0.35) * 1.7;
+          player.vx -= forwardX * curveBrake * 1800 * dt * Math.sign(forwardSpeed || 1);
+          player.vz -= forwardZ * curveBrake * 1800 * dt * Math.sign(forwardSpeed || 1);
+        }
+
+        const airDrag = 1.0 + Math.pow(speed / 5000, 1.4) * kartTuning.coastDrag;
+        const rollingResistance = kartTuning.rollingResistance;
         player.vx *= Math.pow(rollingResistance / airDrag, dt * 60);
         player.vz *= Math.pow(rollingResistance / airDrag, dt * 60);
 
-        const currentLimit = player.turboTimer > 0 ? 6800 : player.maxSpeed;
+        let currentLimit = player.turboTimer > 0 ? 6800 : curveLimit;
+        if (player.turboTimer > 0) currentLimit *= 1 - curveFactor * 0.16;
+        if (player.impactSlowTimer > 0) currentLimit *= 0.56;
         const newSpeed = Math.hypot(player.vx, player.vz);
         if (newSpeed > currentLimit) {
           player.vx = (player.vx / newSpeed) * currentLimit;
@@ -1775,8 +1901,11 @@
 
           const intoWall = player.vx * nearest.nx + player.vz * nearest.nz;
           if (intoWall > 0) {
-            player.vx -= nearest.nx * intoWall * 1.4;
-            player.vz -= nearest.nz * intoWall * 1.4;
+            player.vx -= nearest.nx * intoWall * 1.8;
+            player.vz -= nearest.nz * intoWall * 1.8;
+            player.vx *= kartTuning.wallSpeedLoss;
+            player.vz *= kartTuning.wallSpeedLoss;
+            player.impactSlowTimer = Math.max(player.impactSlowTimer || 0, 0.65);
             player.hitFlash = 0.15;
             playSoundEffect('skid');
           }
@@ -1848,7 +1977,10 @@
 
       function updateCamera3D() {
         player.meshGroup.position.set(player.x, 0, player.z);
-        player.meshGroup.rotation.y = -player.angle + Math.PI / 2;
+        const spinVisual = player.spinTimer > 0 ? player.spinTimer / kartTuning.impactSpinTime : 0;
+        player.meshGroup.position.y = Math.sin(spinVisual * Math.PI) * 16;
+        player.meshGroup.rotation.y = -player.angle + Math.PI / 2 + spinVisual * Math.PI * 2.8;
+        player.meshGroup.rotation.z = Math.sin(spinVisual * Math.PI) * 1.05;
         player.mainBody.material.color.setHex(player.hitFlash > 0 ? 0xffff00 : 0xd97706);
 
         const focusCar = isLiveMode && allCars.length ? [...allCars].sort(compareRaceOrder)[0] : player;
