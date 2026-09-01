@@ -259,8 +259,10 @@
     #carrera-laguna-seca-3d .victory-modal {
       position: absolute;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(10px);
+      background:
+        radial-gradient(circle at 50% 38%, rgba(125, 211, 252, 0.32), rgba(14, 116, 144, 0.18) 34%, rgba(15, 23, 42, 0.72) 72%),
+        rgba(8, 47, 73, 0.58);
+      backdrop-filter: blur(14px);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -277,17 +279,22 @@
     }
     #carrera-laguna-seca-3d .victory-title {
       font-family: 'Orbitron', sans-serif;
-      font-size: 2.5rem;
+      font-size: clamp(2.2rem, 7vw, 5.8rem);
       font-weight: 900;
-      color: #22c55e;
-      text-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      color: #e0f2fe;
+      text-align: center;
+      text-shadow: 0 0 24px rgba(56, 189, 248, 0.9), 0 0 60px rgba(14, 165, 233, 0.65);
     }
     #carrera-laguna-seca-3d .victory-stats {
       font-family: 'Orbitron', sans-serif;
       font-size: 1.1rem;
-      color: #cbd5e1;
+      color: #dbeafe;
       text-align: center;
       line-height: 1.6;
+      background: rgba(7, 89, 133, 0.24);
+      border: 1px solid rgba(125, 211, 252, 0.36);
+      border-radius: 8px;
+      padding: 14px 18px;
     }
     #carrera-laguna-seca-3d .victory-btn {
       background: #38bdf8;
@@ -557,7 +564,7 @@
       const isLiveMode = mode === 'vivo';
       const carColors = [0xd97706,0x38bdf8,0xef4444,0x22c55e,0xa855f7,0xec4899,0xeab308,0x06b6d4,0xf97316,0x64748b];
       let db, roomRef, authUid = null, currentUid = null, localSlot = null, localNickname = 'Jugador', registered = false, lastNetworkPush = 0;
-      let serverTimeOffset = 0, finishClaimPending = false;
+      let serverTimeOffset = 0, serverTimeSynced = false, finishClaimPending = false;
       const remoteCars = new Map();
       let roomData = { players:{}, game:{phase:'lobby',cycle:0} }, judgeAuthorized = false, lastGameCycle = 0;
 
@@ -602,6 +609,7 @@
       let lastBeepStep = -1;
       let raceTime = 0;
       let last = performance.now();
+      let finalModalShown = false;
 
       let scene, camera, renderer;
       let boxes = [];
@@ -648,6 +656,7 @@
           db = firebase.database();
           db.ref('.info/serverTimeOffset').on('value', snapshot => {
             serverTimeOffset = Number(snapshot.val()) || 0;
+            serverTimeSynced = true;
           });
           roomRef = db.ref(`carrerasLagunaSeca/${roomId}`);
           roomRef.on('value', snapshot => applyRoom(snapshot.val() || { players:{}, game:{phase:'lobby',cycle:0} }));
@@ -666,7 +675,13 @@
         syncRemotePlayers(roomData.players);
         if (registered && player && roomData.players[currentUid]) {
           const mine = roomData.players[currentUid];
-          if (Number(mine.finishPosition) > 0) player.finishPosition = Number(mine.finishPosition);
+          if (Number(mine.finishPosition) > 0) {
+            player.finishPosition = Number(mine.finishPosition);
+            player.finishedAt = Number(mine.finishedAt) || player.finishedAt || 0;
+            player.finishElapsedMs = Number(mine.finishElapsedMs) || player.finishElapsedMs || 0;
+            player.finished = true;
+            checkRaceEnd(player.finishPosition);
+          }
           const impactAge = Number(mine.impactAt) ? Date.now() + serverTimeOffset - Number(mine.impactAt) : Infinity;
           if (mine.impactId && mine.impactId !== player.lastImpactId && impactAge < 2500) applyIncomingImpact(mine);
         }
@@ -696,7 +711,7 @@
       function compareJudgePlayers(a, b) {
         const aFinish = Number(a[1].finishPosition) || 0;
         const bFinish = Number(b[1].finishPosition) || 0;
-        if (aFinish && bFinish) return finishElapsedMs(a[1]) - finishElapsedMs(b[1]) || aFinish - bFinish;
+        if (aFinish && bFinish) return aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
         return judgeRaceScore(b[1]) - judgeRaceScore(a[1]) || (Number(a[1].slot) || 99) - (Number(b[1].slot) || 99);
@@ -753,6 +768,7 @@
 
       async function judgeStart() {
         if (!judgeAuthorized || !roomRef) return;
+        if (!serverTimeSynced) { judgeMessage.textContent='Sincronizando reloj de Firebase... intenta de nuevo en un segundo.'; return; }
         await roomRef.transaction(room => {
           room=room||{}; room.players=room.players||{}; room.game=room.game||{cycle:0};
           if (!Object.keys(room.players).length || room.game.phase==='countdown') return;
@@ -825,12 +841,12 @@
           let car = remoteCars.get(uid);
           if (!car) {
             const model = createCarModel(remoteColor(data.slot));
-            car = { uid, name:data.nickname||'Jugador', slot:data.slot||10, isRemote:true, meshGroup:model.group, mainBody:model.mainBody, x:Number(data.x)||0,z:Number(data.z)||0,angle:Number(data.angle)||0,progress:0,raceDistance:0,lap:1,finished:false,finishPosition:0, targetX:Number(data.x)||0,targetZ:Number(data.z)||0,targetAngle:Number(data.angle)||0, impactAt:0 };
+            car = { uid, name:data.nickname||'Jugador', slot:data.slot||10, isRemote:true, meshGroup:model.group, mainBody:model.mainBody, x:Number(data.x)||0,z:Number(data.z)||0,angle:Number(data.angle)||0,progress:0,raceDistance:0,lap:1,finished:false,finishPosition:0, finishedAt:0, finishElapsedMs:0, targetX:Number(data.x)||0,targetZ:Number(data.z)||0,targetAngle:Number(data.angle)||0, impactAt:0 };
             remoteCars.set(uid,car); allCars.push(car);
           }
           car.name=data.nickname||car.name; car.slot=data.slot||car.slot;
           car.targetX=Number(data.x)||0; car.targetZ=Number(data.z)||0; car.targetAngle=Number(data.angle)||0;
-          car.progress=Number(data.progress)||0; car.raceDistance=Number(data.raceDistance)||0; car.lap=Number(data.lap)||1; car.finished=!!data.finished; car.finishPosition=Number(data.finishPosition)||0; car.impactAt=Number(data.impactAt)||0;
+          car.progress=Number(data.progress)||0; car.raceDistance=Number(data.raceDistance)||0; car.lap=Number(data.lap)||1; car.finished=!!data.finished; car.finishPosition=Number(data.finishPosition)||0; car.finishedAt=Number(data.finishedAt)||0; car.finishElapsedMs=Number(data.finishElapsedMs)||0; car.impactAt=Number(data.impactAt)||0;
         });
         remoteCars.forEach((car,uid) => {
           if (!present.has(uid)) { scene.remove(car.meshGroup); remoteCars.delete(uid); allCars=allCars.filter(item=>item!==car); }
@@ -1523,7 +1539,7 @@
           name: localNickname, isBot: false, slot: localSlot || 1,
           meshGroup: playerObj.group, mainBody: playerObj.mainBody,
           x: 0, z: 0, vx: 0, vz: 0, angle: 0,
-          progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false, finishPosition: 0,
+          progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false, finishPosition: 0, finishedAt: 0, finishElapsedMs: 0,
           raceDistance: 0, completedLaps: 0, finalLapAnnounced: false,
           item: null, itemCharges: 0, turboTimer: 0, maxSpeed: 5300,
           spinTimer: 0, impactSlowTimer: 0, lastImpactId: null
@@ -1552,6 +1568,7 @@
         lastBeepStep = -1;
         countdownStart = performance.now();
         last = performance.now();
+        finalModalShown = false;
         victoryModal.classList.remove('show');
         if (roomRef) roomRef.child('players').once('value').then(snapshot => syncRemotePlayers(snapshot.val() || {}));
       }
@@ -1920,7 +1937,7 @@
       function compareRaceOrder(a, b) {
         const aFinish = Number(a.finishPosition) || 0;
         const bFinish = Number(b.finishPosition) || 0;
-        if (aFinish && bFinish) return finishElapsedMs(a) - finishElapsedMs(b) || aFinish - bFinish;
+        if (aFinish && bFinish) return aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
         return getRaceScore(b) - getRaceScore(a) || (Number(a.slot) || 99) - (Number(b.slot) || 99);
@@ -1941,24 +1958,20 @@
             mine.lap = lapsToWin + 1;
             mine.raceDistance = player.raceDistance;
 
-            // La clasificación se recalcula por el tiempo real empleado. Así cada
-            // llegada obtiene un puesto único aunque varios dispositivos terminen
-            // prácticamente al mismo tiempo o tengan un contador local atrasado.
-            const finishers = Object.entries(room.players)
-              .filter(([,p]) => p.finished && (Number(p.finishElapsedMs) > 0 || Number(p.finishedAt) > 0))
-              .sort((a,b) => {
-                const elapsed = p => Number(p.finishElapsedMs) > 0
-                  ? Number(p.finishElapsedMs)
-                  : Math.max(1, Number(p.finishedAt) - Number(room.game.startAt || 0));
-                return elapsed(a[1]) - elapsed(b[1]) || Number(a[1].finishedAt) - Number(b[1].finishedAt) || a[0].localeCompare(b[0]);
-              });
-            finishers.forEach(([,p], index) => { p.finishPosition = index + 1; });
-            room.game.finishCounter = finishers.length;
+            const fixedPositions = Object.values(room.players)
+              .map(p => Number(p.finishPosition) || 0)
+              .filter(position => position > 0);
+            const lastFixedPosition = fixedPositions.length ? Math.max(...fixedPositions) : 0;
+            const nextPosition = Math.max(Number(room.game.finishCounter) || 0, lastFixedPosition) + 1;
+            mine.finishPosition = nextPosition;
+            room.game.finishCounter = nextPosition;
             return room;
           });
           const mine = result.snapshot.val()?.players?.[currentUid];
           if (!result.committed || !Number(mine?.finishPosition)) throw new Error('No se pudo confirmar la llegada');
           player.finishPosition = Number(mine.finishPosition);
+          player.finishedAt = Number(mine.finishedAt) || finishTime;
+          player.finishElapsedMs = Number(mine.finishElapsedMs) || Math.max(1, finishTime - Number(roomData.game?.startAt || finishTime));
           checkRaceEnd(player.finishPosition);
         } catch (error) {
           console.error(error);
@@ -1970,8 +1983,11 @@
       }
 
       function checkRaceEnd(playerRank) {
-        victoryHeading.textContent = playerRank === 1 ? '¡VICTORIA!' : `¡CARRERA FINALIZADA! (${playerRank}º PUESTO)`;
-        victoryStats.textContent = `Tiempo Total: ${raceTime.toFixed(1)}s\nPuesto definitivo: #${playerRank} de ${Object.keys(roomData.players || {}).length} bólidos`;
+        if (finalModalShown || !playerRank) return;
+        finalModalShown = true;
+        const totalPlayers = Object.keys(roomData.players || {}).length || allCars.length || 1;
+        victoryHeading.textContent = `#${playerRank} · ${racePositionLabel(playerRank)}`;
+        victoryStats.textContent = `Puesto definitivo fijado\nTiempo: ${raceTime.toFixed(1)}s\nParticipantes: ${totalPlayers}`;
         victoryModal.classList.add('show');
       }
 
@@ -2033,7 +2049,7 @@
         circuitProgressBar.style.width = `${trackProgressPercent}%`;
 
         allCars.sort(compareRaceOrder);
-        const liveRank = allCars.indexOf(player) + 1;
+        const liveRank = player.finishPosition || allCars.indexOf(player) + 1;
         posEl.textContent = isLiveMode ? (allCars[0] ? `1 · ${allCars[0].name}` : '-') : String(liveRank);
 
         const hudCar = isLiveMode && allCars.length ? allCars[0] : player;
