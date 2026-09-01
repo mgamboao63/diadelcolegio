@@ -667,10 +667,18 @@
         return Number(playerData.raceDistance) || 0;
       }
 
+      function finishElapsedMs(playerData) {
+        const elapsed = Number(playerData.finishElapsedMs);
+        if (elapsed > 0) return elapsed;
+        const finishedAt = Number(playerData.finishedAt);
+        const startAt = Number(roomData.game?.startAt);
+        return finishedAt > 0 && startAt > 0 ? Math.max(1, finishedAt - startAt) : Infinity;
+      }
+
       function compareJudgePlayers(a, b) {
         const aFinish = Number(a[1].finishPosition) || 0;
         const bFinish = Number(b[1].finishPosition) || 0;
-        if (aFinish && bFinish) return aFinish - bFinish;
+        if (aFinish && bFinish) return finishElapsedMs(a[1]) - finishElapsedMs(b[1]) || aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
         return judgeRaceScore(b[1]) - judgeRaceScore(a[1]) || (Number(a[1].slot) || 99) - (Number(b[1].slot) || 99);
@@ -731,7 +739,7 @@
           room=room||{}; room.players=room.players||{}; room.game=room.game||{cycle:0};
           if (!Object.keys(room.players).length || room.game.phase==='countdown') return;
           Object.values(room.players).forEach(p => {
-            p.finished=false; p.finishPosition=null; p.finishedAt=null;
+            p.finished=false; p.finishPosition=null; p.finishedAt=null; p.finishElapsedMs=null;
             p.progress=0; p.raceDistance=0; p.lap=1;
           });
           room.game={...room.game,phase:'countdown',startAt:Date.now()+serverTimeOffset+5000,finishCounter:0};
@@ -744,7 +752,7 @@
         await roomRef.transaction(room => {
           room=room||{}; room.players=room.players||{};
           Object.values(room.players).forEach(p => {
-            p.finished=false; p.finishPosition=null; p.finishedAt=null;
+            p.finished=false; p.finishPosition=null; p.finishedAt=null; p.finishElapsedMs=null;
             p.progress=0; p.raceDistance=0; p.lap=1;
           });
           room.game={phase:'lobby',cycle:(room.game?.cycle||0)+1,finishCounter:0};
@@ -1783,7 +1791,7 @@
       function compareRaceOrder(a, b) {
         const aFinish = Number(a.finishPosition) || 0;
         const bFinish = Number(b.finishPosition) || 0;
-        if (aFinish && bFinish) return aFinish - bFinish;
+        if (aFinish && bFinish) return finishElapsedMs(a) - finishElapsedMs(b) || aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
         return getRaceScore(b) - getRaceScore(a) || (Number(a.slot) || 99) - (Number(b.slot) || 99);
@@ -1793,16 +1801,30 @@
         if (finishClaimPending || player.finishPosition || !roomRef || !currentUid) return;
         finishClaimPending = true;
         try {
+          const finishTime = Date.now() + serverTimeOffset;
           const result = await roomRef.transaction(room => {
             if (!room?.players?.[currentUid] || room.game?.phase !== 'countdown') return;
             const mine = room.players[currentUid];
             if (Number(mine.finishPosition) > 0) return room;
-            room.game.finishCounter = (Number(room.game.finishCounter) || 0) + 1;
-            mine.finishPosition = room.game.finishCounter;
             mine.finished = true;
-            mine.finishedAt = firebase.database.ServerValue.TIMESTAMP;
+            mine.finishedAt = finishTime;
+            mine.finishElapsedMs = Math.max(1, finishTime - Number(room.game.startAt || finishTime));
             mine.lap = lapsToWin + 1;
             mine.raceDistance = player.raceDistance;
+
+            // La clasificación se recalcula por el tiempo real empleado. Así cada
+            // llegada obtiene un puesto único aunque varios dispositivos terminen
+            // prácticamente al mismo tiempo o tengan un contador local atrasado.
+            const finishers = Object.entries(room.players)
+              .filter(([,p]) => p.finished && (Number(p.finishElapsedMs) > 0 || Number(p.finishedAt) > 0))
+              .sort((a,b) => {
+                const elapsed = p => Number(p.finishElapsedMs) > 0
+                  ? Number(p.finishElapsedMs)
+                  : Math.max(1, Number(p.finishedAt) - Number(room.game.startAt || 0));
+                return elapsed(a[1]) - elapsed(b[1]) || Number(a[1].finishedAt) - Number(b[1].finishedAt) || a[0].localeCompare(b[0]);
+              });
+            finishers.forEach(([,p], index) => { p.finishPosition = index + 1; });
+            room.game.finishCounter = finishers.length;
             return room;
           });
           const mine = result.snapshot.val()?.players?.[currentUid];
