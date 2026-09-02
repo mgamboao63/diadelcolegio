@@ -572,13 +572,13 @@
       const roadWidth = 520;
       const lapsToWin = 3;
       const kartTuning = {
-        coastDrag: 0.025,
-        rollingResistance: 0.9996,
+        coastDrag: 0.065,
+        rollingResistance: 0.9984,
         brakeForce: 4300,
         wallSpeedLoss: 0.46,
         trafficSpeedLoss: 0.38,
-        driftGripBase: 0.58,
-        driftGripSteerPenalty: 0.34,
+        driftGripBase: 0.88,
+        driftGripSteerPenalty: 0.10,
         tightCurveSlowdown: 0.46,
         homingRange: 5200,
         homingTurnRate: 8.5,
@@ -675,8 +675,8 @@
         syncRemotePlayers(roomData.players);
         if (registered && player && roomData.players[currentUid]) {
           const mine = roomData.players[currentUid];
-          if (Number(mine.finishPosition) > 0) {
-            player.finishPosition = Number(mine.finishPosition);
+          if (mine.finished || Number(mine.finishPosition) > 0) {
+            player.finishPosition = finishRankFor(currentUid, roomData.players) || Number(mine.finishPosition);
             player.finishedAt = Number(mine.finishedAt) || player.finishedAt || 0;
             player.finishElapsedMs = Number(mine.finishElapsedMs) || player.finishElapsedMs || 0;
             player.finished = true;
@@ -708,9 +708,22 @@
         return finishedAt > 0 && startAt > 0 ? Math.max(1, finishedAt - startAt) : Infinity;
       }
 
+      function orderedFinishers(players = roomData.players || {}) {
+        return Object.entries(players)
+          .filter(([,data]) => data?.finished && Number.isFinite(finishElapsedMs(data)))
+          .sort((a,b) => finishElapsedMs(a[1]) - finishElapsedMs(b[1]) ||
+            (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
+            a[0].localeCompare(b[0]));
+      }
+
+      function finishRankFor(uid, players = roomData.players || {}) {
+        const index = orderedFinishers(players).findIndex(([id]) => id === uid);
+        return index >= 0 ? index + 1 : 0;
+      }
+
       function compareJudgePlayers(a, b) {
-        const aFinish = Number(a[1].finishPosition) || 0;
-        const bFinish = Number(b[1].finishPosition) || 0;
+        const aFinish = finishRankFor(a[0]);
+        const bFinish = finishRankFor(b[0]);
         if (aFinish && bFinish) return aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
@@ -729,7 +742,7 @@
         const count = players.length;
         const phase = roomData.game?.phase || 'lobby';
         const ordered = [...players].sort(compareJudgePlayers);
-        const finishedCount = ordered.filter(([,data]) => Number(data.finishPosition) > 0).length;
+        const finishedCount = orderedFinishers().length;
         const raceComplete = count > 0 && finishedCount === count;
         const phaseText = phase === 'lobby' ? 'Esperando salida' : raceComplete ? 'Carrera finalizada' : `Carrera en curso · ${finishedCount}/${count} llegaron`;
         judgeInfo.textContent = `${count}/40 jugadores conectados · ${phaseText}`;
@@ -744,16 +757,16 @@
         const currentRanks = new Map(ordered.map(([uid], index) => [uid, index + 1]));
         judgeTrack.style.minWidth = `${Math.max(720, count * 96)}px`;
         judgeTrack.innerHTML = [...ordered].reverse().map(([uid,data]) => {
-          const finalPosition = Number(data.finishPosition) || 0;
+          const finalPosition = finishRankFor(uid);
           const rank = finalPosition || currentRanks.get(uid);
           const color = `#${remoteColor(data.slot).toString(16).padStart(6,'0')}`;
           return `<div class="judge-racer ${finalPosition ? 'finished' : ''} ${finalPosition === 1 ? 'winner' : ''}" style="--racer-color:${color}" title="${escapeRaceText(data.nickname)} · ${racePositionLabel(rank)}"><span class="judge-racer-box">${rank}</span><span class="judge-racer-name">${escapeRaceText(data.nickname || 'Jugador')}</span></div>`;
         }).join('');
 
-        const winner = ordered.find(([,data]) => Number(data.finishPosition) === 1);
+        const winner = orderedFinishers()[0];
         const winnerHtml = winner ? `<div class="judge-winner">🏆 GANADOR: ${escapeRaceText(winner[1].nickname)} · PRIMER PUESTO</div>` : '';
         const rows = ordered.map(([uid,data], index) => {
-          const finalPosition = Number(data.finishPosition) || 0;
+          const finalPosition = finishRankFor(uid);
           const shownPosition = finalPosition || index + 1;
           const status = finalPosition ? racePositionLabel(finalPosition) : phase === 'lobby' ? `PARRILLA ${Number(data.slot) || index + 1}` : 'EN CARRERA';
           return `<div class="judge-result-row ${shownPosition <= 3 ? 'podium' : ''}"><strong>${shownPosition}º</strong><span>${escapeRaceText(data.nickname || 'Jugador')}</span><span>${status}</span></div>`;
@@ -1562,6 +1575,17 @@
         player.completedLaps = 0;
         player.finalLapAnnounced = false;
 
+        // La cámara inicia detrás del vehículo local. No viaja desde el origen
+        // del circuito cuando el jugador ocupa una posición lejana de parrilla.
+        if (camera && !isLiveMode) {
+          camera.position.set(
+            player.x - Math.cos(player.angle) * 220,
+            92,
+            player.z - Math.sin(player.angle) * 220
+          );
+          camera.lookAt(player.x, 20, player.z);
+        }
+
         raceTime = 0;
         running = false;
         finishClaimPending = false;
@@ -1835,8 +1859,8 @@
           here.tangent.x * ahead.tangent.x + here.tangent.z * ahead.tangent.z
         );
         const curveFactor = THREE.MathUtils.clamp(Math.abs(curveAngle) / 0.74, 0, 1);
-        const grip = THREE.MathUtils.clamp(kartTuning.driftGripBase - speed / 10000 - steerIntensity * kartTuning.driftGripSteerPenalty, 0.12, 0.62);
-        const steerRate = (3.45 + curveFactor * 0.85) / (1 + speed / 4200);
+        const grip = THREE.MathUtils.clamp(kartTuning.driftGripBase - speed / 18000 - steerIntensity * kartTuning.driftGripSteerPenalty, 0.56, 0.92);
+        const steerRate = (3.05 + curveFactor * 0.72) / (1 + speed / 3900);
 
         if (Math.abs(lateralSpeed) > 1200 && speed > 2000 && Math.random() < 0.2) {
           playSoundEffect('skid');
@@ -1854,8 +1878,8 @@
         player.vz -= forwardZ * activeBrake * kartTuning.brakeForce * dt * Math.sign(forwardSpeed || 1);
         player.vx -= forwardX * reverse * 1200 * dt;
         player.vz -= forwardZ * reverse * 1200 * dt;
-        player.vx -= sideX * lateralSpeed * grip * 7.8 * dt;
-        player.vz -= sideZ * lateralSpeed * grip * 7.8 * dt;
+        player.vx -= sideX * lateralSpeed * grip * 13.5 * dt;
+        player.vz -= sideZ * lateralSpeed * grip * 13.5 * dt;
 
         const curveLimit = player.maxSpeed * (1 - curveFactor * kartTuning.tightCurveSlowdown);
         if (curveFactor > 0.45 && speed > curveLimit) {
@@ -1935,8 +1959,8 @@
       }
 
       function compareRaceOrder(a, b) {
-        const aFinish = Number(a.finishPosition) || 0;
-        const bFinish = Number(b.finishPosition) || 0;
+        const aFinish = a.uid ? finishRankFor(a.uid) : Number(a.finishPosition) || 0;
+        const bFinish = b.uid ? finishRankFor(b.uid) : Number(b.finishPosition) || 0;
         if (aFinish && bFinish) return aFinish - bFinish;
         if (aFinish) return -1;
         if (bFinish) return 1;
@@ -1958,18 +1982,23 @@
             mine.lap = lapsToWin + 1;
             mine.raceDistance = player.raceDistance;
 
-            const fixedPositions = Object.values(room.players)
-              .map(p => Number(p.finishPosition) || 0)
-              .filter(position => position > 0);
-            const lastFixedPosition = fixedPositions.length ? Math.max(...fixedPositions) : 0;
-            const nextPosition = Math.max(Number(room.game.finishCounter) || 0, lastFixedPosition) + 1;
-            mine.finishPosition = nextPosition;
-            room.game.finishCounter = nextPosition;
+            const finishers = Object.entries(room.players)
+              .filter(([,p]) => p.finished && (Number(p.finishElapsedMs) > 0 || Number(p.finishedAt) > 0))
+              .sort((a,b) => {
+                const elapsed = p => Number(p.finishElapsedMs) > 0
+                  ? Number(p.finishElapsedMs)
+                  : Math.max(1, Number(p.finishedAt) - Number(room.game.startAt || 0));
+                return elapsed(a[1]) - elapsed(b[1]) ||
+                  (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
+                  a[0].localeCompare(b[0]);
+              });
+            finishers.forEach(([,p], index) => { p.finishPosition = index + 1; });
+            room.game.finishCounter = finishers.length;
             return room;
           });
           const mine = result.snapshot.val()?.players?.[currentUid];
           if (!result.committed || !Number(mine?.finishPosition)) throw new Error('No se pudo confirmar la llegada');
-          player.finishPosition = Number(mine.finishPosition);
+          player.finishPosition = finishRankFor(currentUid, result.snapshot.val()?.players || {}) || Number(mine.finishPosition);
           player.finishedAt = Number(mine.finishedAt) || finishTime;
           player.finishElapsedMs = Number(mine.finishElapsedMs) || Math.max(1, finishTime - Number(roomData.game?.startAt || finishTime));
           checkRaceEnd(player.finishPosition);
@@ -2001,8 +2030,8 @@
 
         const focusCar = isLiveMode && allCars.length ? [...allCars].sort(compareRaceOrder)[0] : player;
 
-        const camDistance = 260;
-        const camHeight = 100;
+        const camDistance = 220;
+        const camHeight = 92;
 
         let shakeX = 0, shakeZ = 0;
         if (player.hitFlash > 0) {
