@@ -15,8 +15,7 @@
             display: block;
         }
 
-        #info,
-        #controlsHelp {
+        #info {
             position: absolute;
             color: white;
             font-family: Arial, sans-serif;
@@ -52,11 +51,6 @@
             backdrop-filter: blur(4px);
         }
 
-        #controlsHelp {
-            right: 10px;
-            bottom: 10px;
-        }
-
         #crosshair {
             position: absolute;
             left: 50%;
@@ -67,7 +61,7 @@
             border: 2px solid rgba(255, 255, 255, 0.88);
             border-radius: 50%;
             pointer-events: none;
-            display: none;
+            display: block;
             box-shadow:
                 0 0 0 1px rgba(0, 0, 0, 0.45),
                 0 0 13px rgba(255, 227, 77, 0.42);
@@ -243,6 +237,10 @@
             display: none;
         }
 
+        .judge-controls.hidden {
+            display: none;
+        }
+
         .lobby-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -405,7 +403,6 @@
     <div id="aimScope"></div>
     <div id="gameStatus"></div>
     <div id="eliminationOverlay">ELIMINADO</div>
-    <div id="controlsHelp">Primer click: capturar mouse<br>Click: disparar<br>Click derecho: agacharse<br>Espacio: saltar<br>WASD: caminar<br>Shift: correr<br>V: zoom rifle<br>Esc: soltar mouse</div>
     <div id="waitingOverlay">
         <div class="waiting-card">
             <strong>ESPERE AL JUEZ</strong>
@@ -427,11 +424,9 @@
                         <input id="nicknameInput" maxlength="18" placeholder="Nickname">
 
                     </div>
-                    <h3>Avatar</h3>
-                    <div id="avatarGrid" class="avatar-grid"></div>
                     <button id="joinButton">Inscribir jugador</button>
                     <div id="lobbyMessage"></div>
-                    <div class="team-summary"><div class="team-summary-item"><strong>Arena libre</strong><span id="freePlayerCount" class="team-count">0/10 inscritos</span></div></div>
+                    <div class="team-summary"><div class="team-summary-item"><strong>Arena libre</strong><span id="freePlayerCount" class="team-count">0/40 inscritos</span></div></div>
 
                 </section>
             </div>
@@ -441,14 +436,17 @@
                     <h3>Juez</h3>
                     <div class="lobby-row">
                         <input id="judgePasswordInput" type="password" placeholder="Contrasena del juez">
+                        <button id="judgeAccessButton" type="button">Entrar</button>
                     </div>
-                    <div class="lobby-row">
-                        <button id="judgeStartButton">Iniciar partida</button>
-                        <button id="judgeResetButton" class="secondary">Reiniciar</button>
+                    <div id="judgeControls" class="judge-controls hidden">
+                        <div class="lobby-row">
+                            <button id="judgeStartButton">Iniciar partida</button>
+                            <button id="judgeResetButton" class="secondary">Reiniciar</button>
+                        </div>
+                        <section class="lobby-section"><h3>Jugadores en la arena <span id="freeCount" class="team-count">0/40</span></h3><ol id="freeRoster" class="team-list"></ol></section>
                     </div>
                     <div id="judgeMessage"></div>
                 </section>
-                <section class="lobby-section"><h3>Jugadores en la arena <span id="freeCount" class="team-count">0/10</span></h3><ol id="freeRoster" class="team-list"></ol></section>
 
                 </div>
             </div>
@@ -500,9 +498,9 @@
         const aimScopeScreenOffset = new THREE.Vector2(-42, 0);
         const shotAimVerticalOffset = 0.18;
         let playerCharacterFile = 'red_character.fbx';
-        const enableExternalRifle = true;
+        const enableExternalRifle = false;
         const enableRifleIK = false;
-        const enableRifleHandFollow = true;
+        const enableRifleHandFollow = false;
         const enableBlueAllies = false;
         const enableRedOpponents = false;
         const rifleHandFollowStrength = 0.25;
@@ -512,6 +510,120 @@
         const cityGroundRay = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
         const paintballs = [];
         const paintSplats = [];
+        let throwPoseAmount = 0;
+        let grabPoseAmount = 0;
+        // Cajas de pelotas (Ponchados)
+        const ballBoxes = [];
+        let localBallInHand = null; // { mesh }
+
+        function createBallBoxes() {
+            const positions = [[-1250, -700], [-700, 1250], [700, 1250], [1250, 700],
+                [1250, -700], [700, -1250], [-700, -1250], [-1250, 700]];
+            positions.forEach((p, idx) => {
+                const material = new THREE.MeshStandardMaterial({ color: 0xd92828, roughness: 0.4 });
+                const box = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 12), material);
+                box.position.set(p[0], 18, p[1]);
+                box.userData = { id: `ball_${idx}`, count: 1 };
+                box.name = `CajaPelotas_${idx}`;
+                box.castShadow = true;
+                scene.add(box);
+                ballBoxes.push(box);
+            });
+        }
+
+        function findNearestBox(position, maxDist = 220) {
+            let nearest = null;
+            let best = Infinity;
+            ballBoxes.forEach((b) => {
+                const d = position.distanceTo(b.position);
+                if (d < best && d <= maxDist && b.userData.count > 0) {
+                    best = d; nearest = b;
+                }
+            });
+            return nearest;
+        }
+
+        function getHandWorldPosition() {
+            if (avatar) {
+                const hand = findBoneInAvatar(avatar, ['righthand', 'RightHand', 'hand', 'Hand']);
+                if (hand) {
+                    hand.updateMatrixWorld(true);
+                    return hand.getWorldPosition(new THREE.Vector3());
+                }
+            }
+            // fallback: in front of camera
+            const pos = camera.getWorldPosition(new THREE.Vector3());
+            const dir = getCrosshairDirection();
+            return pos.add(dir.multiplyScalar(80));
+        }
+
+        function getCrosshairDirection() {
+            const crosshairPoint = new THREE.Vector3(0, 0, 0.5).unproject(camera);
+            return crosshairPoint.sub(camera.position).normalize();
+        }
+
+        function getCrosshairTarget(distance = 2500) {
+            return camera.position.clone().add(getCrosshairDirection().multiplyScalar(distance));
+        }
+
+        function pickupBallLocal() {
+            if (!player || localBallInHand) return;
+            const box = findNearestBox(player.position, 220);
+            if (!box) return;
+            if (box.userData.count <= 0) return;
+            box.userData.count -= 1;
+            box.visible = false;
+            grabPoseAmount = 1;
+            // crear mesh de pelota y enganchar a la mano
+            const mat = new THREE.MeshStandardMaterial({ color: 0xd92828, roughness: 0.4 });
+            const ball = new THREE.Mesh(new THREE.SphereGeometry(10, 12, 12), mat);
+            const hand = findBoneInAvatar(avatar, ['righthand', 'RightHand', 'hand', 'Hand']);
+            if (hand) {
+                hand.add(ball);
+                ball.position.set(8, -6, 0);
+                ball.castShadow = true;
+                localBallInHand = { mesh: ball };
+            } else {
+                // fallback: attach to player group
+                player.add(ball);
+                ball.position.copy(player.position).add(new THREE.Vector3(0, 120, -20));
+                localBallInHand = { mesh: ball };
+            }
+        }
+
+        function autoPickupBallLocal() {
+            if (!player || localBallInHand) return;
+            const box = findNearestBox(player.position, 70);
+            if (box) pickupBallLocal();
+        }
+
+        function throwBallLocal() {
+            if (!player || !localBallInHand || gameOver || gameState !== 'running') return;
+            throwPoseAmount = 1;
+            const start = getHandWorldPosition();
+            const aimTarget = getCrosshairTarget();
+            aimTarget.y = Math.max(aimTarget.y, start.y + 80);
+            const direction = aimTarget.sub(start).normalize();
+            const shotId = `${firebaseUid}-${getServerNow()}-${++shotSequence}`;
+            const color = 0xd92828;
+            spawnPaintball(start, direction, color, 'free', { ownerUid: firebaseUid, shotId });
+            // enviar trayectoria al servidor (como antes)
+            update(localPlayerRef, {
+                lastShot: {
+                    id: shotId, x: Number(start.x.toFixed(2)), y: Number(start.y.toFixed(2)), z: Number(start.z.toFixed(2)),
+                    dx: Number(direction.x.toFixed(5)), dy: Number(direction.y.toFixed(5)), dz: Number(direction.z.toFixed(5)),
+                    color, team: 'free', createdAt: serverTimestamp()
+                }
+            }).catch(() => {});
+            // eliminar mesh de la mano
+            try {
+                const m = localBallInHand.mesh;
+                if (m.parent) m.parent.remove(m);
+                if (m.geometry) m.geometry.dispose();
+                if (m.material) m.material.dispose();
+            } catch (e) {}
+            localBallInHand = null;
+        }
         const teamAvatars = [];
         const remotePlayers = new Map();
         const registrations = { blue: [], red: [] };
@@ -527,8 +639,15 @@
         const firebaseDb = getDatabase(firebaseApp);
         const roomRef = ref(firebaseDb, 'juegos/paintball');
         let firebaseUid = '';
+        let serverTimeOffset = 0;
         let roomData = { game: { phase: 'lobby', cycle: 0 }, players: {} };
         let firebaseReady = false;
+        let firebaseConnecting = false;
+
+        function getServerNow() {
+            return Date.now() + serverTimeOffset;
+        }
+
         function getSessionPlayerId(baseUid) {
             let sessionId = sessionStorage.getItem('paintballSessionId');
             if (!sessionId) {
@@ -543,53 +662,43 @@
         let blueTemplateLoading = false;
         let redTemplateLoading = false;
         const lobbyAvatars = [
-            { name: 'Rayo', file: 'avatars/rayo.png', color: '#f59e0b' },
-            { name: 'Fenix', file: 'avatars/fenix.png', color: '#ef4444' },
-            { name: 'Tigre', file: 'avatars/tigre.png', color: '#f97316' },
-            { name: 'Halcon', file: 'avatars/halcon.png', color: '#3b82f6' },
-            { name: 'Lobo', file: 'avatars/lobo.png', color: '#64748b' },
-            { name: 'Jaguar', file: 'avatars/jaguar.png', color: '#a16207' },
-            { name: 'Cometa', file: 'avatars/cometa.png', color: '#8b5cf6' },
-            { name: 'Titan', file: 'avatars/titan.png', color: '#0f766e' },
-            { name: 'Nebula', file: 'avatars/nebula.png', color: '#6366f1' },
-            { name: 'Vector', file: 'avatars/vector.png', color: '#06b6d4' },
-            { name: 'Kitsune', file: 'avatars/kitsune.png', color: '#a855f7' },
-            { name: 'Leonidas', file: 'avatars/leonidas.png', color: '#2563eb' },
-            { name: 'Fenrir', file: 'avatars/fenrir.png', color: '#38bdf8' },
-            { name: 'Luna', file: 'avatars/luna.png', color: '#ec4899' },
-            { name: 'Drax', file: 'avatars/drax.png', color: '#f97316' },
-            { name: 'Nyx', file: 'avatars/nyx.png', color: '#8b5cf6' },
-            { name: 'Alistair', file: 'avatars/alistair.png', color: '#14b8a6' },
-            { name: 'Kaelen', file: 'avatars/kaelen.png', color: '#64748b' },
-            { name: 'Zara', file: 'avatars/zara.png', color: '#06b6d4' },
-            { name: 'Jax', file: 'avatars/jax.png', color: '#92400e' },
-            { name: 'Fae', file: 'avatars/fae.png', color: '#22c55e' },
-            { name: 'Rocco', file: 'avatars/rocco.png', color: '#475569' },
-            { name: 'Rina', file: 'avatars/rina.png', color: '#16a34a' },
-            { name: 'Seth', file: 'avatars/seth.png', color: '#d97706' },
-            { name: 'Ivy', file: 'avatars/ivy.png', color: '#15803d' },
-            { name: 'Bolt', file: 'avatars/bolt.png', color: '#eab308' }
+            { name: 'Personaje 1', file: 'personaje1.glb', color: '#d97706' },
+            { name: 'Personaje 2', file: 'personaje2.glb', color: '#0ea5a4' },
+            { name: 'Personaje 3', file: 'personaje3.glb', color: '#7c3aed' },
+            { name: 'Personaje 4', file: 'personaje4.glb', color: '#ef4444' },
+            { name: 'Personaje 5', file: 'personaje5.glb', color: '#f59e0b' },
+            { name: 'Personaje 6', file: 'personaje6.glb', color: '#06b6d4' },
+            { name: 'Personaje 7', file: 'personaje7.glb', color: '#14b8a6' },
+            { name: 'Personaje 8', file: 'personaje8.glb', color: '#3b82f6' },
+            { name: 'Personaje 9', file: 'personaje9.glb', color: '#92400e' }
         ];
         const rosterMarkers = [];
         const blueFlagPosition = new THREE.Vector3();
         const redFlagPosition = new THREE.Vector3();
-        const maxPlayersPerTeam = 10;
+        const maxPlayersPerTeam = 40;
+        // Plantillas de modelos personaje
+        const personajeFiles = ['personaje1.glb','personaje2.glb','personaje3.glb','personaje4.glb','personaje5.glb','personaje6.glb','personaje7.glb','personaje8.glb','personaje9.glb'];
+        const personajeTemplates = [];
+        let personajeReady = false;
         const judgePassword = '136101521';
         const arenaSeed = 240727;
         const pageMode = new URLSearchParams(window.location.search).get('modo') || 'jugador';
+        const soloDebugMode = false;
         let gameState = 'lobby';
         let playerRegistered = false;
         let playerNickname = '';
-        let playerTeam = 'red';
+        let playerTeam = 'free';
         let localSpawnSlot = 0;
         let selectedLobbyAvatar = 0;
+        let judgeAuthenticated = false;
+        let registrationPending = false;
         let playerHealth = 3;
         let gameOver = false;
         let shotSequence = 0;
         let winnerCheckInProgress = false;
         let cityReady = false;
 
-        const moveSpeed = 180;
+        const moveSpeed = 190;
         const sprintSpeed = 350;
         const crouchSpeedMultiplier = 0.52;
         const jumpSpeed = 540;
@@ -612,9 +721,9 @@
         const aimBodyFollow = 1;
         const normalCameraFov = 60;
         const aimCameraFov = 18;
-        const cameraOffset = new THREE.Vector3(45, 150, 255);
+        const cameraOffset = new THREE.Vector3(0, 210, -300);
         const aimCameraOffset = new THREE.Vector3(10, 150, 34);
-        const lookTargetOffset = new THREE.Vector3(0, 108, 0);
+        const lookTargetOffset = new THREE.Vector3(0, 95, 420);
         const aimLookTargetOffset = new THREE.Vector3(0, 134, -150);
         const rifleZoomCameraOffset = new THREE.Vector3(58, 145, 54);
         const rifleZoomLookOffset = new THREE.Vector3(10, 126, -178);
@@ -677,7 +786,7 @@
             createArena();
             createPlayer();
             updateGameStatus('Inscribete y espera la orden del juez.');
-            loadRedCharacter();
+            loadPersonajeTemplates();
             setupInput();
             setupLobby();
             connectFirebaseRoom();
@@ -694,7 +803,10 @@
         }
 
         function setupLobby() {
-            document.getElementById('joinButton').addEventListener('click', registerLobbyPlayer);
+            const joinButton = document.getElementById('joinButton');
+            joinButton.disabled = true;
+            joinButton.addEventListener('click', registerLobbyPlayer);
+            document.getElementById('judgeAccessButton').addEventListener('click', enterJudgePanel);
             document.getElementById('judgeStartButton').addEventListener('click', judgeStartGame);
             document.getElementById('judgeResetButton').addEventListener('click', judgeResetGame);
             document.getElementById('playersTabButton').addEventListener('click', () => showLobbyTab('players'));
@@ -702,22 +814,76 @@
             renderAvatarChoices();
             showLobbyTab(pageMode === 'juez' || pageMode === 'vivo' ? 'judge' : 'players');
             renderLobby();
+
+            if (soloDebugMode) {
+                const lobby = document.getElementById('lobbyPanel');
+                const judgeButton = document.getElementById('judgeTabButton');
+                const playersButton = document.getElementById('playersTabButton');
+                if (lobby) lobby.classList.add('hidden');
+                if (judgeButton) judgeButton.style.display = 'none';
+                if (playersButton) playersButton.style.display = 'none';
+                const startSoloLoop = () => {
+                    if (playerRegistered) return;
+                    if (!personajeReady) {
+                        setTimeout(startSoloLoop, 250);
+                        return;
+                    }
+                    registerLocalSoloPlayer();
+                };
+                setTimeout(startSoloLoop, 250);
+            }
         }
 
         async function connectFirebaseRoom() {
+            if (soloDebugMode) {
+                firebaseUid = getSessionPlayerId('solo-debug');
+                firebaseReady = true;
+                localPlayerRef = null;
+                roomData = { game: { phase: 'running', cycle: 0 }, players: {} };
+                setLobbyMessage('Modo prueba local activado.');
+                updateGameStatus('Modo prueba local. Partida iniciada sin juez.');
+                if (personajeReady) {
+                    setTimeout(() => registerLocalSoloPlayer(), 250);
+                }
+                return;
+            }
+
+            if (firebaseConnecting || firebaseReady) return;
+            firebaseConnecting = true;
             setLobbyMessage('Conectando sala...');
             try {
-                await signInAnonymously(firebaseAuth);
+                const authResult = await Promise.race([
+                    signInAnonymously(firebaseAuth),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Tiempo de conexion agotado')), 12000))
+                ]);
+                if (!authResult?.user) throw new Error('No se pudo autenticar el jugador');
                 firebaseUid = getSessionPlayerId(firebaseAuth.currentUser.uid);
                 firebaseReady = true;
+                firebaseConnecting = false;
+                const joinButton = document.getElementById('joinButton');
+                if (joinButton) joinButton.disabled = false;
                 localPlayerRef = ref(firebaseDb, `juegos/paintball/players/${firebaseUid}`);
+                onValue(ref(firebaseDb, '.info/serverTimeOffset'), (snapshot) => {
+                    serverTimeOffset = Number(snapshot.val()) || 0;
+                });
                 onDisconnect(localPlayerRef).remove();
 
                 onValue(roomRef, (snapshot) => {
                     applyRoomData(snapshot.val() || createEmptyRoom());
                 });
+                if (registrationPending) {
+                    registrationPending = false;
+                    registerLobbyPlayer();
+                }
             } catch (error) {
+                firebaseConnecting = false;
+                firebaseReady = false;
+                const joinButton = document.getElementById('joinButton');
+                if (joinButton) joinButton.disabled = false;
                 setLobbyMessage(`No se pudo conectar a Firebase: ${error.message}`);
+                window.setTimeout(() => {
+                    if (!firebaseReady && !playerRegistered) connectFirebaseRoom();
+                }, 3000);
             }
         }
 
@@ -740,7 +906,7 @@
             syncLocalCombatState();
             renderLobby();
             syncRemotePlayers();
-            setJudgeMessage(`Conectados: ${getRoomPlayers().length}/10`);
+            setJudgeMessage(`Conectados: ${getRoomPlayers().length}/40`);
 
             const currentCycle = roomData.game?.cycle || 0;
             if (lastRoomCycle && currentCycle !== previousCycle && currentCycle !== lastRoomCycle) {
@@ -784,7 +950,7 @@
                 if (survivors.length > 1) return;
                 room.game.phase = 'ended';
                 room.game.winnerUid = survivors[0]?.[0] || null;
-                room.game.finishedAt = Date.now();
+                room.game.finishedAt = serverTimestamp();
                 return room;
             }).catch(() => {}).finally(() => { winnerCheckInProgress = false; });
         }
@@ -874,7 +1040,7 @@
                     blueTemplateLoading = false;
                     blueAvatarTemplate = object;
                     normalizeAvatarToGround(blueAvatarTemplate);
-                    blueAvatarTemplate.rotation.y = Math.PI;
+                    // blueAvatarTemplate.rotation.y = Math.PI;
                     blueAvatarTemplate.traverse((child) => {
                         if (child.isMesh) {
                             child.castShadow = true;
@@ -965,7 +1131,10 @@
 
         function ensureRemoteVisual(remote, playerData) {
             const team = playerData.team === 'red' ? 'red' : 'blue';
-            const sourceAvatar = getRemoteSourceAvatar(team);
+            // Preferir plantilla personaje según avatar index (FFA)
+            const avatarIndex = Number(playerData.avatar) || 0;
+            const tpl = personajeTemplates[avatarIndex % (personajeTemplates.length || 1)];
+            const sourceAvatar = tpl && tpl.scene ? tpl.scene : getRemoteSourceAvatar(team);
 
             if (sourceAvatar && !remote.avatarObject) {
                 const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
@@ -1014,6 +1183,63 @@
                 if (nameParts.some((part) => normalizedName.includes(part))) found = child;
             });
             return found;
+        }
+
+        function applyProceduralMovementPose(targetAvatar, delta, isMoving, upperBodyOnly = false) {
+            if (!targetAvatar) return;
+
+            const cyclePhase = isMoving ? (clock.elapsedTime * 1.8) % 1 : 0;
+            const cycle = cyclePhase * Math.PI * 2;
+            const swing = isMoving ? Math.sin(cycle) : 0;
+            const stride = isMoving ? Math.sin(cycle + Math.PI) : 0;
+            const throwBlend = THREE.MathUtils.clamp(throwPoseAmount, 0, 1);
+            const grabBlend = THREE.MathUtils.clamp(grabPoseAmount, 0, 1);
+            throwPoseAmount = Math.max(0, throwPoseAmount - delta * 2.5);
+            grabPoseAmount = Math.max(0, grabPoseAmount - delta * 2.0);
+
+            const leftArm = findBoneInAvatar(targetAvatar, ['leftupperarm', 'leftarm', 'hombroizq']);
+            const rightArm = findBoneInAvatar(targetAvatar, ['rightupperarm', 'rightarm', 'hombroder']);
+            const leftForearm = findBoneInAvatar(targetAvatar, ['leftforearm', 'leftlowerarm', 'antebrazoizq']);
+            const rightForearm = findBoneInAvatar(targetAvatar, ['rightforearm', 'rightlowerarm', 'antebrazoder']);
+            const leftLeg = findBoneInAvatar(targetAvatar, ['leftthigh', 'leftleg', 'piernaizq']);
+            const rightLeg = findBoneInAvatar(targetAvatar, ['rightthigh', 'rightleg', 'piernader']);
+            const leftShin = findBoneInAvatar(targetAvatar, ['leftshin', 'leftlowerleg', 'canillaizq']);
+            const rightShin = findBoneInAvatar(targetAvatar, ['rightshin', 'rightlowerleg', 'canillader']);
+            const spine = findBoneInAvatar(targetAvatar, ['spine', 'torso', 'pelvis']);
+
+            const runStrength = isMoving ? 1 : 0;
+            const armSwing = swing * 0.9 * runStrength;
+            const legSwing = stride * 0.8 * runStrength;
+
+            if (spine) {
+                spine.rotation.x = THREE.MathUtils.lerp(spine.rotation.x, -0.14 * runStrength + throwBlend * 0.3, 0.2);
+            }
+            if (leftArm) leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, -1.05 + armSwing + throwBlend * 0.7, 0.22);
+            if (rightArm) rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, 1.05 - armSwing - throwBlend * 1.25, 0.22);
+            if (leftForearm) leftForearm.rotation.x = THREE.MathUtils.lerp(leftForearm.rotation.x, 0.9 + armSwing * 0.2, 0.18);
+            if (rightForearm) rightForearm.rotation.x = THREE.MathUtils.lerp(rightForearm.rotation.x, -0.9 - armSwing * 0.2 - throwBlend * 0.65, 0.18);
+            if (!upperBodyOnly) {
+                if (leftLeg) leftLeg.rotation.x = THREE.MathUtils.lerp(leftLeg.rotation.x, -0.7 + legSwing, 0.2);
+                if (rightLeg) rightLeg.rotation.x = THREE.MathUtils.lerp(rightLeg.rotation.x, 0.7 - legSwing, 0.2);
+                if (leftShin) leftShin.rotation.x = THREE.MathUtils.lerp(leftShin.rotation.x, 0.45 + legSwing * 0.4, 0.18);
+                if (rightShin) rightShin.rotation.x = THREE.MathUtils.lerp(rightShin.rotation.x, -0.45 - legSwing * 0.4, 0.18);
+            }
+
+            if (grabBlend > 0.001) {
+                const hand = findBoneInAvatar(targetAvatar, ['righthand', 'rightHand', 'handder']);
+                if (hand) {
+                    hand.rotation.z = THREE.MathUtils.lerp(hand.rotation.z, -0.8 * grabBlend, 0.3);
+                    hand.rotation.x = THREE.MathUtils.lerp(hand.rotation.x, -0.65 * grabBlend, 0.3);
+                }
+            }
+
+            if (throwBlend > 0.001) {
+                const hand = findBoneInAvatar(targetAvatar, ['righthand', 'rightHand', 'handder']);
+                if (hand) {
+                    hand.rotation.z = THREE.MathUtils.lerp(hand.rotation.z, -1.1 - throwBlend * 0.95, 0.25);
+                    hand.rotation.x = THREE.MathUtils.lerp(hand.rotation.x, 1.3 + throwBlend * 0.6, 0.25);
+                }
+            }
         }
 
         function getLocalRifleTransformInRightHand() {
@@ -1095,12 +1321,12 @@
             const shotData = playerData.lastShot;
             if (!shotData || !shotData.id || shotData.id === remote.lastShotId) return;
             remote.lastShotId = shotData.id;
-            if (Number.isFinite(Number(shotData.createdAt)) && Date.now() - Number(shotData.createdAt) > paintballLife * 1000) return;
+            if (Number.isFinite(Number(shotData.createdAt)) && getServerNow() - Number(shotData.createdAt) > paintballLife * 1000) return;
 
             const start = new THREE.Vector3(Number(shotData.x), Number(shotData.y), Number(shotData.z));
             const direction = new THREE.Vector3(Number(shotData.dx), Number(shotData.dy), Number(shotData.dz));
             if (!Number.isFinite(start.x) || !Number.isFinite(start.y) || !Number.isFinite(start.z) || direction.lengthSq() < 0.01) return;
-            spawnPaintball(start, direction, Number(shotData.color) || paintballColor, shotData.team === 'red' ? 'red' : 'blue', {
+            spawnPaintball(start, direction, Number(shotData.color) || paintballColor, shotData.team || 'free', {
                 ownerUid: remote.uid,
                 shotId: shotData.id
             });
@@ -1111,7 +1337,7 @@
             if (!grid) return;
             grid.innerHTML = lobbyAvatars.map((avatarData, index) => `
                 <button class="avatar-choice ${index === selectedLobbyAvatar ? 'selected' : ''}" type="button" data-avatar-index="${index}">
-                    <img src="${avatarData.file}" alt="${avatarData.name}">
+                    <div class="avatar-swatch" style="width:36px;height:36px;border-radius:6px;background:${avatarData.color};display:inline-block;vertical-align:middle;margin-right:8px"></div>
                     <span>${avatarData.name}</span>
                 </button>
             `).join('');
@@ -1137,6 +1363,90 @@
             judgeButton.classList.toggle('active', showJudge);
         }
 
+        async function registerLocalSoloPlayer() {
+            if (playerRegistered) return;
+            if (!personajeReady && !playerRegistered) {
+                setTimeout(registerLocalSoloPlayer, 250);
+                return;
+            }
+            const nickname = 'PruebaLocal';
+            const avatarIndex = Math.floor(Math.random() * personajeFiles.length);
+            selectedLobbyAvatar = avatarIndex;
+            playerRegistered = true;
+            playerNickname = nickname;
+            playerTeam = 'free';
+            localSpawnSlot = 0;
+            gameState = 'running';
+            gameOver = false;
+            player.position.set(-1850, 0, -1320);
+            yaw = Math.atan2(1850, 1320);
+            player.rotation.y = yaw + playerFacingOffset;
+            hideWaitingForJudge();
+            setLobbyMessage('Modo prueba local activado.');
+            updateGameStatus('Modo prueba local. Partida iniciada sin juez.');
+            renderLobby();
+
+            if (personajeReady && personajeTemplates[selectedLobbyAvatar]) {
+                const tpl = personajeTemplates[selectedLobbyAvatar];
+                const clone = SkeletonUtils.clone(tpl.scene);
+                avatar = clone;
+                normalizeAvatarToGround(avatar);
+                avatar.rotation.y = Math.PI;
+                avatar.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                if (tpl.animations && tpl.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(avatar);
+                    sharedWalkClip = makeClipInPlace(tpl.animations[0]);
+                    walkAction = mixer.clipAction(sharedWalkClip);
+                    walkLoopStart = 0;
+                    walkLoopEnd = sharedWalkClip.duration;
+                    idlePoseTime = sharedWalkClip.duration * (9 / 15);
+                    walkAction.play();
+                    walkAction.time = idlePoseTime;
+                    walkAction.weight = 1;
+                    walkAction.timeScale = 0;
+                    mixer.update(0.001);
+                }
+                if (player.children.includes(avatar)) {
+                    player.remove(avatar);
+                }
+                player.add(avatar);
+            } else {
+                playerCharacterFile = 'character.fbx';
+                loadCharacter();
+            }
+            createRosterMarker(nickname, 'free', localSpawnSlot);
+            roomData = {
+                game: { phase: 'running', cycle: 0 },
+                players: {
+                    [firebaseUid]: {
+                        uid: firebaseUid,
+                        nickname,
+                        team: 'free',
+                        avatar: avatarIndex,
+                        spawnSlot: 0,
+                        health: 3,
+                        alive: true,
+                        x: player.position.x,
+                        y: 0,
+                        z: player.position.z,
+                        yaw,
+                        rotationY: player.rotation.y,
+                        crouching: false,
+                        joinedAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    }
+                }
+            };
+            if (firebaseReady && firebaseUid && localPlayerRef) {
+                publishLocalPlayerState(true);
+            }
+        }
+
         async function registerLobbyPlayer() {
             if (playerRegistered) {
                 setLobbyMessage('Ya estas inscrito. Espera al juez.');
@@ -1144,7 +1454,8 @@
                 return;
             }
             if (!firebaseReady || !firebaseUid) {
-                setLobbyMessage('La sala todavia se esta conectando. Intenta en un momento.');
+                registrationPending = true;
+                setLobbyMessage('Conectando sala... tu inscripcion se enviara automaticamente.');
                 return;
             }
             if (gameState !== 'lobby') {
@@ -1155,8 +1466,8 @@
             const nicknameInput = document.getElementById('nicknameInput');
             const nickname = nicknameInput.value.trim();
             // El color se asigna automaticamente solo para distinguir los disparos.
-            // Todos los jugadores son rivales.
-            let team = 'blue';
+            // Todos los jugadores son rivales (free-for-all).
+            let team = 'free';
 
             if (!nickname) {
                 setLobbyMessage('Escribe un nickname.');
@@ -1183,13 +1494,14 @@
 
                     if (players.length >= maxPlayersPerTeam) return;
                     const spawnSlot = players.length;
-                    team = spawnSlot % 2 === 0 ? 'blue' : 'red';
+                    // asignacion libre: 'free'
+                    team = 'free';
                     const spawn = getTeamSpawn(team, spawnSlot);
                     room.players[firebaseUid] = {
                         uid: firebaseUid,
                         nickname,
                         team,
-                        avatar: selectedLobbyAvatar,
+                        avatar: Math.floor(Math.random() * personajeFiles.length),
                         spawnSlot,
                         health: 3,
                         alive: true,
@@ -1199,8 +1511,8 @@
                         yaw: Number(spawn.yaw.toFixed(4)),
                         rotationY: Number((spawn.yaw + playerFacingOffset).toFixed(4)),
                         crouching: false,
-                        joinedAt: Date.now(),
-                        updatedAt: Date.now()
+                        joinedAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
                     };
                     return room;
                 });
@@ -1224,11 +1536,41 @@
                 playerNickname = nickname;
                 playerTeam = team;
                 localSpawnSlot = getPlayerSpawnSlot(savedPlayer, 0);
-                playerCharacterFile = team === 'blue' ? 'character.fbx' : 'red_character.fbx';
+                selectedLobbyAvatar = Number(savedPlayer.avatar) || 0;
                 placePlayerAtTeamSpawn(team, savedPlayer);
-                loadCharacter();
-                if (enableExternalRifle) {
-                    loadRifle();
+                // Crear avatar local desde plantillas personaje si estan listas
+                if (personajeReady && personajeTemplates[selectedLobbyAvatar]) {
+                    const tpl = personajeTemplates[selectedLobbyAvatar];
+                    const clone = SkeletonUtils.clone(tpl.scene);
+                    avatar = clone;
+                    normalizeAvatarToGround(avatar);
+                    avatar.rotation.y = Math.PI;
+                    avatar.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    if (tpl.animations && tpl.animations.length > 0) {
+                        mixer = new THREE.AnimationMixer(avatar);
+                        sharedWalkClip = makeClipInPlace(tpl.animations[0]);
+                        walkAction = mixer.clipAction(sharedWalkClip);
+                        walkLoopStart = 0;
+                        walkLoopEnd = sharedWalkClip.duration;
+                        idlePoseTime = sharedWalkClip.duration * (9 / 15);
+                        walkAction.play();
+                        walkAction.time = idlePoseTime;
+                        walkAction.weight = 1;
+                        walkAction.timeScale = 0;
+                        mixer.update(0.001);
+                    }
+                    player.add(avatar);
+                    tryCreateTeamAvatars();
+                    syncRemotePlayers();
+                } else {
+                    // fallback al cargador FBX original
+                    playerCharacterFile = 'character.fbx';
+                    loadCharacter();
                 }
                 publishLocalPlayerState(true);
                 updateGameStatus(`${nickname} inscrito. Todos son rivales: espera al juez.`);
@@ -1344,13 +1686,9 @@
         }
 
         function getTeamSpawn(team, index = 0) {
-            // Diez puntos separados: no existen bases ni equipos; todos empiezan repartidos.
-            const spawns = [
-                [-1850, -1320], [1850, 1320], [-1600, 1480], [1620, -1510], [0, -2050],
-                [0, 2050], [-2200, 120], [2200, -120], [-900, 0], [900, 0]
-            ];
-            const point = spawns[index % spawns.length];
-            const spawnPosition = new THREE.Vector3(point[0], 0, point[1]);
+            const angle = (index % maxPlayersPerTeam) / maxPlayersPerTeam * Math.PI * 2;
+            const radius = 2250;
+            const spawnPosition = new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
             return { position: spawnPosition, yaw: Math.atan2(-spawnPosition.x, -spawnPosition.z) };
         }
 
@@ -1373,8 +1711,8 @@
         }
 
         function createRosterMarker(nickname, team, index) {
-            const flagPosition = team === 'blue' ? blueFlagPosition : redFlagPosition;
-            const color = team === 'blue' ? 0x1e68ff : 0xd92828;
+            const flagPosition = team === 'blue' ? blueFlagPosition : (team === 'red' ? redFlagPosition : new THREE.Vector3());
+            const color = team === 'blue' ? 0x1e68ff : (team === 'red' ? 0xd92828 : 0x999999);
             const angle = (index / maxPlayersPerTeam) * Math.PI * 2;
             const radius = 120 + index * 22;
             const position = flagPosition.clone().add(new THREE.Vector3(Math.sin(angle) * radius, 0, Math.cos(angle) * radius));
@@ -1401,17 +1739,27 @@
             rosterMarkers.push(marker);
         }
 
+        function enterJudgePanel() {
+            const input = document.getElementById('judgePasswordInput');
+            if (!input || input.value !== judgePassword) {
+                setJudgeMessage('Contrasena del juez incorrecta.');
+                return;
+            }
+
+            judgeAuthenticated = true;
+            input.disabled = true;
+            document.getElementById('judgeAccessButton').disabled = true;
+            document.getElementById('judgeControls').classList.remove('hidden');
+            setJudgeMessage('Panel de juez habilitado.');
+            renderLobby();
+        }
+
         async function judgeStartGame() {
             if (!validateJudgePassword()) return;
             if (getRoomPlayers().length < 2) {
                 setJudgeMessage('Para todos contra todos deben existir al menos dos jugadores inscritos.');
                 return;
             }
-            if (!cityReady) {
-                setJudgeMessage('La ciudad aun esta cargando. Espera un momento.');
-                return;
-            }
-
             await runTransaction(roomRef, (room) => {
                 room = room || createEmptyRoom();
                 room.game = room.game || { phase: 'lobby', cycle: 0 };
@@ -1424,7 +1772,7 @@
                 });
                 room.game.phase = 'running';
                 room.game.winnerUid = null;
-                room.game.startedAt = Date.now();
+                room.game.startedAt = serverTimestamp();
                 return room;
             });
             setJudgeMessage('Partida iniciada.');
@@ -1437,7 +1785,7 @@
                 game: {
                     phase: 'lobby',
                     cycle: nextCycle,
-                    resetAt: Date.now()
+                    resetAt: serverTimestamp()
                 },
                 players: {}
             });
@@ -1445,9 +1793,8 @@
         }
 
         function validateJudgePassword() {
-            const input = document.getElementById('judgePasswordInput');
-            if (!input || input.value !== judgePassword) {
-                setJudgeMessage('Contrasena del juez incorrecta.');
+            if (!judgeAuthenticated) {
+                setJudgeMessage('Primero ingresa al panel del juez.');
                 return false;
             }
             setJudgeMessage('');
@@ -1477,8 +1824,8 @@
                         mixer = new THREE.AnimationMixer(object);
                         sharedWalkClip = makeClipInPlace(object.animations[0]);
                         walkAction = mixer.clipAction(sharedWalkClip);
-                        walkLoopStart = sharedWalkClip.duration * (1 / 15);
-                        walkLoopEnd = sharedWalkClip.duration * (15 / 15);
+                        walkLoopStart = 0;
+                        walkLoopEnd = sharedWalkClip.duration;
                         idlePoseTime = sharedWalkClip.duration * (9 / 15);
                         walkAction.play();
                         walkAction.time = idlePoseTime;
@@ -1541,6 +1888,43 @@
             );
         }
 
+        function loadPersonajeTemplates() {
+            const loader = new GLTFLoader();
+            let remaining = personajeFiles.length;
+            personajeFiles.forEach((file, idx) => {
+                loader.load(file, (gltf) => {
+                    const model = gltf.scene;
+                    normalizeAvatarToGround(model);
+                    model.rotation.y = Math.PI;
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    // guardar animaciones junto a la escena
+                    if (gltf.animations && gltf.animations.length > 0 && !sharedWalkClip) {
+                        sharedWalkClip = makeClipInPlace(gltf.animations[0]);
+                    }
+                    personajeTemplates[idx] = { scene: model, animations: gltf.animations || [] };
+                    remaining -= 1;
+                    if (remaining === 0) {
+                        personajeReady = true;
+                        tryCreateTeamAvatars();
+                        syncRemotePlayers();
+                    }
+                }, undefined, (err) => {
+                    console.error('Error cargando', file, err);
+                    remaining -= 1;
+                    if (remaining === 0) {
+                        personajeReady = true;
+                        tryCreateTeamAvatars();
+                        syncRemotePlayers();
+                    }
+                });
+            });
+        }
+
         function normalizeAvatarToGround(targetAvatar) {
             targetAvatar.scale.set(1, 1, 1);
             targetAvatar.position.set(0, 0, 0);
@@ -1597,7 +1981,10 @@
         }
 
         function tryCreateTeamAvatars() {
-            if (teamsCreated || !avatar || !rifle) return;
+            if (!avatar || !rifle) return;
+            if (teamsCreated) {
+                return;
+            }
             if (enableRedOpponents && !redAvatar) return;
             teamsCreated = true;
 
@@ -1637,17 +2024,8 @@
             npc.add(npcAvatar);
             addTeamMarker(npc, team === 'red' ? 0xd92828 : 0x1e68ff);
 
-            const npcRifle = rifle.clone(true);
-            npcRifle.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                    if (child.material) {
-                        child.material = child.material.clone();
-                    }
-                }
-            });
-            npc.add(npcRifle);
+            // NPCs no tienen rifle en la versión de Ponchados; se reserva campo para pelota en mano.
+            npc.userData.ballInHand = null;
 
             scene.add(npc);
             const npcAnimation = createNpcWalkAnimation(npcAvatar, team);
@@ -1673,8 +2051,8 @@
 
             const npcMixer = new THREE.AnimationMixer(npcAvatar);
             const action = npcMixer.clipAction(clip);
-            const loopStart = clip.duration * (1 / 15);
-            const loopEnd = clip.duration * (15 / 15);
+            const loopStart = 0;
+            const loopEnd = clip.duration;
             const npcIdlePoseTime = clip.duration * (9 / 15);
             action.play();
             action.time = team === 'red' ? loopStart + Math.random() * Math.max(loopEnd - loopStart, 0.001) : npcIdlePoseTime;
@@ -1983,8 +2361,21 @@
         }
 
         function makeClipInPlace(clip) {
+            let minTime = Infinity;
+            clip.tracks.forEach(track => {
+                if (track.times.length > 0 && track.times[0] < minTime) {
+                    minTime = track.times[0];
+                }
+            });
+
             const tracks = clip.tracks.map((track) => {
                 const clonedTrack = track.clone();
+                if (minTime > 0 && minTime < Infinity) {
+                    for (let i = 0; i < clonedTrack.times.length; i++) {
+                        clonedTrack.times[i] -= minTime;
+                    }
+                }
+
                 const trackName = clonedTrack.name.toLowerCase();
                 const isPositionTrack = trackName.endsWith('.position');
                 const isRootPositionTrack =
@@ -1992,23 +2383,40 @@
                     (trackName.includes('hips') || trackName.includes('root'));
 
                 if (!isRootPositionTrack) {
+                    smoothTrackLoop(clonedTrack);
                     return clonedTrack;
                 }
 
                 const values = clonedTrack.values;
                 const startX = values[0];
+                const startY = values[1];
                 const startZ = values[2];
 
+                let minX = startX, maxX = startX;
+                let minY = startY, maxY = startY;
+                let minZ = startZ, maxZ = startZ;
+
                 for (let i = 0; i < values.length; i += 3) {
-                    values[i] = startX;
-                    values[i + 2] = startZ;
+                    if (values[i] < minX) minX = values[i];
+                    if (values[i] > maxX) maxX = values[i];
+                    if (values[i+1] < minY) minY = values[i+1];
+                    if (values[i+1] > maxY) maxY = values[i+1];
+                    if (values[i+2] < minZ) minZ = values[i+2];
+                    if (values[i+2] > maxZ) maxZ = values[i+2];
+                }
+
+                for (let i = 0; i < values.length; i += 3) {
+                    if (maxX - minX > 20) values[i] = startX;
+                    if (maxY - minY > 20) values[i + 1] = startY;
+                    if (maxZ - minZ > 20) values[i + 2] = startZ;
                 }
 
                 smoothTrackLoop(clonedTrack);
                 return clonedTrack;
             });
 
-            const inPlaceClip = new THREE.AnimationClip(`${clip.name}_in_place`, clip.duration, tracks);
+            const newDuration = (minTime > 0 && minTime < Infinity) ? clip.duration - minTime : clip.duration;
+            const inPlaceClip = new THREE.AnimationClip(`${clip.name}_in_place`, newDuration, tracks);
             inPlaceClip.optimize();
             return inPlaceClip;
         }
@@ -2030,11 +2438,21 @@
                 if (event.code === 'KeyV' && !event.repeat) {
                     sideView = !sideView;
                 }
-                if (event.code === 'Space' && !event.repeat) {
+                if ((event.code === 'AltLeft' || event.code === 'AltRight') && !event.repeat) {
                     tryJump();
+                }
+                if (event.code === 'Space' || event.code === 'AltLeft' || event.code === 'AltRight') {
+                    event.preventDefault();
                 }
                 if (event.code === 'KeyP' && !event.repeat) {
                     printRifleTuning();
+                }
+                // Ponchados: E = recoger pelota de caja cercana, F = lanzar si tienes una pelota
+                if (event.code === 'KeyE' && !event.repeat) {
+                    pickupBallLocal();
+                }
+                if (event.code === 'KeyF' && !event.repeat) {
+                    throwBallLocal();
                 }
             });
 
@@ -2049,6 +2467,9 @@
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (document.pointerLockElement !== renderer.domElement) {
                     renderer.domElement.requestPointerLock();
+                    if (event.button === 0 && localBallInHand) {
+                        firePaintball();
+                    }
                     return;
                 }
 
@@ -2126,17 +2547,37 @@
         function createArena() {
             resetArenaRandom();
             chooseFlagBases();
-            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x516f48, roughness: 0.95 });
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x6d8a61, roughness: 0.95 });
             const ground = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000, 200, 200), groundMaterial);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             scene.add(ground);
 
-            createGroundDetails();
-            createClouds();
-            loadCityModel();
+            // Modo de prueba local: evitamos la ciudad para revisar solo la mecánica del jugador.
             createBoundaryWalls();
+            createBallBoxes();
+            createTrainingField();
+        }
 
+        function createTrainingField() {
+            const lowCoverHeight = Math.round(playerStandingHeight * 0.6);
+            const fullCoverHeight = Math.round(playerStandingHeight * 1.1);
+
+            const lowBarricades = [
+                [-980, -420, 260, 42], [-420, -760, 220, 42], [420, -760, 220, 42], [980, -420, 260, 42],
+                [-980, 420, 260, 42], [-420, 760, 220, 42], [420, 760, 220, 42], [980, 420, 260, 42],
+                [-420, 0, 42, 260], [420, 0, 42, 260], [0, -420, 260, 42], [0, 420, 260, 42]
+            ];
+            lowBarricades.forEach(([x, z, width, depth], index) => {
+                createObstacle(`Barricada baja ${index + 1}`, x, lowCoverHeight / 2, z, width, lowCoverHeight, depth, 0x596b55);
+            });
+
+            const highBarricades = [
+                [-1250, 0, 42, 300], [1250, 0, 42, 300], [0, -1250, 300, 42], [0, 1250, 300, 42]
+            ];
+            highBarricades.forEach(([x, z, width, depth], index) => {
+                createObstacle(`Barricada alta ${index + 1}`, x, fullCoverHeight / 2, z, width, fullCoverHeight, depth, 0x3f5149);
+            });
         }
 
         function loadCityModel() {
@@ -2449,6 +2890,7 @@
                     }
                     post.castShadow = true;
                     scene.add(post);
+                    addBoxCollider(post.position.x, post.position.z, 18, 18, 0, wallHeight + 42);
                 }
             }
         }
@@ -2514,7 +2956,7 @@
             box.castShadow = true;
             box.receiveShadow = true;
             scene.add(box);
-            addBoxCollider(x, z, width, depth, 0);
+            addBoxCollider(x, z, width, depth, 0, y + height / 2);
         }
 
         function createLogObstacle(name, x, z, rotation) {
@@ -2615,6 +3057,7 @@
             pole.position.set(x, 82.5, z);
             pole.castShadow = true;
             scene.add(pole);
+            addBoxCollider(x, z, 10, 10, 0, 165);
 
             const flag = new THREE.Mesh(
                 new THREE.BoxGeometry(76, 46, 4),
@@ -2633,6 +3076,7 @@
             base.position.set(x, 6, z);
             base.receiveShadow = true;
             scene.add(base);
+            addBoxCollider(x, z, 60, 60, 0, 12);
 
         }
 
@@ -2764,10 +3208,10 @@
 
         function getMovementVector() {
             const input = new THREE.Vector3();
-            if (keys.KeyW || keys.ArrowUp) input.z -= 1;
-            if (keys.KeyS || keys.ArrowDown) input.z += 1;
-            if (keys.KeyA || keys.ArrowLeft) input.x -= 1;
-            if (keys.KeyD || keys.ArrowRight) input.x += 1;
+            if (keys.KeyW || keys.ArrowUp || keys.Space) input.z += 1;
+            if (keys.KeyS || keys.ArrowDown) input.z -= 1;
+            if (keys.KeyA || keys.ArrowLeft) input.x += 1;
+            if (keys.KeyD || keys.ArrowRight) input.x -= 1;
 
             if (input.lengthSq() > 0) input.normalize();
             input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
@@ -2781,9 +3225,11 @@
             updateCrouchPose(delta);
 
             if (gameState !== 'running') {
+                if (avatar) applyProceduralMovementPose(avatar, delta, false);
                 return;
             }
 
+            autoPickupBallLocal();
             const movement = getMovementVector();
             const isMoving = movement.lengthSq() > 0.001;
             playerIsMoving = isMoving;
@@ -2802,13 +3248,26 @@
             const aimBodyYaw = (isAiming || sideView) ? rifleAimYaw * aimBodyFollow : 0;
             player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, yaw + playerFacingOffset + aimBodyYaw, 12 * delta);
 
-            if (walkAction) {
-                if (isMoving && walkAction.timeScale === 0) {
-                    walkAction.time = clampWalkTime(walkAction.time);
-                } else if (!isMoving && walkAction.timeScale !== 0) {
-                    walkAction.time = idlePoseTime;
+            if (avatar) {
+                if (!walkAction) {
+                    applyProceduralMovementPose(avatar, delta, isMoving);
+                } else {
+                    // Solo aplicamos brazos si lanza o recoge (procedural sin piernas)
+                    if (throwPoseAmount > 0.001 || grabPoseAmount > 0.001) {
+                        applyProceduralMovementPose(avatar, delta, false, true);
+                    }
                 }
-                walkAction.timeScale = isMoving ? (keys.ShiftLeft || keys.ShiftRight ? 1.25 : 0.9) : 0;
+            }
+
+            if (walkAction) {
+                if (isMoving) {
+                    const targetSpeed = keys.ShiftLeft || keys.ShiftRight ? 1.25 : 1.0;
+                    walkAction.timeScale = targetSpeed;
+                } else {
+                    walkAction.timeScale = 0;
+                    // Retornar suavemente al frame idle
+                    walkAction.time = THREE.MathUtils.lerp(walkAction.time, idlePoseTime, 10 * delta);
+                }
             }
 
             if (enableExternalRifle) {
@@ -2819,6 +3278,7 @@
         }
 
         function updateVerticalMovement(delta) {
+            const previousY = player.position.y;
             verticalVelocity -= gravity * delta;
             player.position.y += verticalVelocity * delta;
 
@@ -2826,6 +3286,23 @@
             if (player.position.y <= groundHeight) {
                 player.position.y = groundHeight;
                 verticalVelocity = 0;
+            }
+
+            if (verticalVelocity <= 0) {
+                const landingCollider = colliders.find((collider) => {
+                    if (!Number.isFinite(collider.height) || previousY < collider.height) return false;
+                    const dx = player.position.x - collider.center.x;
+                    const dz = player.position.z - collider.center.y;
+                    const localX = dx * collider.cos - dz * collider.sin;
+                    const localZ = dx * collider.sin + dz * collider.cos;
+                    return Math.abs(localX) <= collider.half.x + playerCollisionRadius &&
+                        Math.abs(localZ) <= collider.half.y + playerCollisionRadius &&
+                        player.position.y <= collider.height;
+                });
+                if (landingCollider) {
+                    player.position.y = landingCollider.height;
+                    verticalVelocity = 0;
+                }
             }
 
             const beforeResolveY = player.position.y;
@@ -2850,25 +3327,15 @@
         }
 
         function firePaintball() {
-            if (!rifle || gameOver || gameState !== 'running') return;
-
+            // En Ponchados se lanza desde la mano si se tiene una pelota.
+            if (gameOver || gameState !== 'running') return;
             const now = clock.elapsedTime;
             if (now - lastShotTime < shotCooldown) return;
             lastShotTime = now;
 
-            const start = getRifleMuzzleWorldPosition();
-            const direction = getRifleShotDirection();
-            const shotId = `${firebaseUid}-${Date.now()}-${++shotSequence}`;
-            const color = playerTeam === 'red' ? 0xd92828 : paintballColor;
-            spawnPaintball(start, direction, color, playerTeam, { ownerUid: firebaseUid, shotId });
-            // Se envia solo la trayectoria: cada equipo dibuja la misma bola localmente.
-            update(localPlayerRef, {
-                lastShot: {
-                    id: shotId, x: Number(start.x.toFixed(2)), y: Number(start.y.toFixed(2)), z: Number(start.z.toFixed(2)),
-                    dx: Number(direction.x.toFixed(5)), dy: Number(direction.y.toFixed(5)), dz: Number(direction.z.toFixed(5)),
-                    color, team: playerTeam, createdAt: Date.now()
-                }
-            }).catch(() => {});
+            if (localBallInHand) {
+                throwBallLocal();
+            }
         }
 
         function spawnPaintball(start, direction, color, team, metadata = {}) {
@@ -2878,7 +3345,7 @@
                 emissiveIntensity: 0.35,
                 roughness: 0.35
             });
-            const ball = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 16), material);
+            const ball = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 16), material);
             ball.name = 'Bola de pintura';
             ball.position.copy(start);
             ball.castShadow = true;
@@ -2915,9 +3382,6 @@
                     const hitAvatar = hitCover ? false : handlePaintballAvatarHit(shot);
                     const hitGround = shot.mesh.position.y < 8;
 
-                    if (hitCover || hitGround) {
-                        createPaintSplat(shot.mesh.position, shot.mesh.material.color, hitCollider);
-                    }
                     if (shot.life <= 0 || outOfArena || hitCover || hitGround || hitAvatar) {
                         removeShot = true;
                         break;
@@ -2938,7 +3402,7 @@
 
             const now = clock.elapsedTime;
             teamAvatars.forEach((npc) => {
-                if (!npc.alive || npc.team !== 'red' || now < npc.nextShotAt) return;
+                if (!npc.alive || npc.team !== 'red' || npc.isStaticTarget || now < npc.nextShotAt) return;
 
                 const distanceToPlayer = distanceXZ(npc.group.position, player.position);
                 if (distanceToPlayer > 1900) {
@@ -2965,13 +3429,6 @@
 
                 npc.action.timeScale = npc.alive && npc.team === 'red' ? 0.9 : 0;
                 npc.mixer.update(delta);
-
-                if (npc.action.time >= npc.loopEnd) {
-                    const loopLength = Math.max(npc.loopEnd - npc.loopStart, 0.001);
-                    npc.action.time = npc.loopStart + ((npc.action.time - npc.loopStart) % loopLength);
-                } else if (npc.action.time < npc.loopStart) {
-                    npc.action.time = npc.loopStart;
-                }
             });
         }
 
@@ -2985,12 +3442,6 @@
                 if (!remote.mixer || !remote.action) return;
 
                 remote.mixer.update(delta);
-                if (remote.action.time >= remote.loopEnd) {
-                    const loopLength = Math.max(remote.loopEnd - remote.loopStart, 0.001);
-                    remote.action.time = remote.loopStart + ((remote.action.time - remote.loopStart) % loopLength);
-                } else if (remote.action.time < remote.loopStart) {
-                    remote.action.time = remote.loopStart;
-                }
             });
         }
 
@@ -3095,7 +3546,7 @@
             }
 
             // Se conserva la practica contra los bots, si se activan mas adelante.
-            if (!shot.ownerUid && shot.team === 'blue') {
+            if (shot.ownerUid === firebaseUid || (!shot.ownerUid && shot.team === 'blue')) {
                 const hit = teamAvatars.find((npc) => npc.alive && npc.team === 'red' &&
                     distanceXZ(shot.mesh.position, npc.group.position) < 58 &&
                     shot.mesh.position.y > 45 && shot.mesh.position.y < 175);
@@ -3117,7 +3568,7 @@
                 target.alive = health > 0;
                 target.eliminated = health === 0;
                 target.lastImpactId = shotId;
-                target.updatedAt = Date.now();
+                target.updatedAt = serverTimestamp();
                 return target;
             }).catch(() => {});
         }
@@ -3200,23 +3651,6 @@
             rifle.rotation.z = THREE.MathUtils.lerp(rifle.rotation.z, rifleBaseRotation.z + roll, 0.13);
         }
 
-        function clampWalkTime(time) {
-            if (walkLoopEnd <= walkLoopStart) return time;
-            if (time < walkLoopStart || time > walkLoopEnd) return walkLoopStart;
-            return time;
-        }
-
-        function syncWalkLoop() {
-            if (!walkAction || !playerIsMoving || walkLoopEnd <= walkLoopStart) return;
-
-            const loopLength = walkLoopEnd - walkLoopStart;
-            if (walkAction.time >= walkLoopEnd) {
-                walkAction.time = walkLoopStart + ((walkAction.time - walkLoopStart) % loopLength);
-            } else if (walkAction.time < walkLoopStart) {
-                walkAction.time = walkLoopStart;
-            }
-        }
-
         function updateCamera() {
             if (!player) return;
             const cameraDrop = isCrouching ? crouchCameraDrop : 0;
@@ -3250,7 +3684,10 @@
             const desiredPosition = player.position.clone().add(orbit);
             desiredPosition.y -= cameraDrop;
             camera.position.lerp(desiredPosition, isAiming ? 0.32 : 0.18);
-            const lookTarget = player.position.clone().add(isAiming ? aimLookTargetOffset : lookTargetOffset);
+            const targetOffset = (isAiming ? aimLookTargetOffset : lookTargetOffset)
+                .clone()
+                .applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            const lookTarget = player.position.clone().add(targetOffset);
             lookTarget.y -= cameraDrop;
             camera.lookAt(lookTarget);
 
@@ -3269,12 +3706,15 @@
             requestAnimationFrame(animate);
 
             const delta = clock.getDelta();
+
+            if (mixer) {
+                mixer.update(delta);
+            }
+
             updatePlayer(delta);
             publishLocalPlayerState();
 
             if (mixer) {
-                mixer.update(delta);
-                syncWalkLoop();
                 applyRifleHandFollow();
                 if (enableExternalRifle && enableRifleIK) {
                     applyRifleIK();
