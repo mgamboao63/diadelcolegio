@@ -74,4 +74,17 @@ function control(){let b=$('cj');if(!juez){$('login').classList.remove('hide');b
 function vivo(){let h=`<div class="card"><div class="top"><span class="badge">${estado()}</span>${G.deadline?`<span class="timer">⏱ ${segundos()} s</span>`:''}</div>`;if(G.estado==='abierta')h+=`<div class="q">${q()[1]}</div><p style="text-align:center">Los tres primeros aciertos forman el podio de rapidez.</p>`;if(G.estado==='eligiendo')h+=`<div class="q">¡${E(G.players?.[G.selector]?.nombre||'El primer lugar')} ganó la ronda y elige a quién eliminar!</div>${resumen({ronda:G.ronda,podio:G.podio||[],eliminados:[],motivo:''})}`;if(['entre_rondas','finalizada'].includes(G.estado))h+=resumen();if(G.estado==='finalizada')h+=`<div class="winner">🏆 ${E(Object.values(G.players||{}).find(x=>!x.eliminado)?.nombre||'')} GANA</div>`;h+=cartel()+'</div>';$('pv').innerHTML=h}
 function reloj(){let k=G?.estado+'-'+G?.deadline;if(!G?.deadline||k===last)return;last=k;setTimeout(()=>{if(ahoraServidor()<G.deadline)return;if(juez&&G.estado==='abierta')cerrar()},Math.max(0,G.deadline-ahoraServidor()+100))}function render(){if(!G)return;if(modo==='jugador')jugador();if(modo==='juez')control();if(modo==='vivo')vivo();reloj()}
 const modo=new URLSearchParams(location.search).get('modo')||'jugador';await signInAnonymously(auth);uid=sessionPlayerId(auth.currentUser.uid,'ganaeliminafirebaseSessionId');onValue(ref(db,'.info/serverTimeOffset'),s=>{serverTimeOffset=Number(s.val())||0});$(modo==='juez'?'juez':modo==='vivo'?'vivo':'jugador').classList.remove('hide');onValue(R,s=>{G=s.val()||nuevo();render()});setInterval(()=>document.querySelectorAll('.timer').forEach(x=>x.textContent=`⏱ ${segundos()} s`),250);
+</script><script>
+let responderEnviando=false;
+(function instalarGuardRespuesta(){
+	if(typeof window.responder!=='function'){setTimeout(instalarGuardRespuesta,50);return}
+	const responderOriginal=window.responder;
+	window.responder=async valor=>{
+		if(responderEnviando)return;
+		responderEnviando=true;
+		render();
+		document.querySelectorAll('#pj button').forEach(b=>b.disabled=true);
+		try{return await responderOriginal(valor)}finally{responderEnviando=false;render()}
+	};
+})();
 </script><script src="regresar.js"></script></body></html>

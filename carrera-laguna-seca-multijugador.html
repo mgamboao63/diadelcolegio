@@ -711,12 +711,15 @@
       function orderedFinishers(players = roomData.players || {}) {
         return Object.entries(players)
           .filter(([,data]) => data?.finished && Number.isFinite(finishElapsedMs(data)))
-          .sort((a,b) => finishElapsedMs(a[1]) - finishElapsedMs(b[1]) ||
+          .sort((a,b) => (Number(a[1].finishPosition) || Infinity) - (Number(b[1].finishPosition) || Infinity) ||
+            finishElapsedMs(a[1]) - finishElapsedMs(b[1]) ||
             (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
             a[0].localeCompare(b[0]));
       }
 
       function finishRankFor(uid, players = roomData.players || {}) {
+        const directPosition = Number(players[uid]?.finishPosition);
+        if (directPosition > 0) return directPosition;
         const index = orderedFinishers(players).findIndex(([id]) => id === uid);
         return index >= 0 ? index + 1 : 0;
       }
@@ -1981,19 +1984,8 @@
             mine.finishElapsedMs = Math.max(1, finishTime - Number(room.game.startAt || finishTime));
             mine.lap = lapsToWin + 1;
             mine.raceDistance = player.raceDistance;
-
-            const finishers = Object.entries(room.players)
-              .filter(([,p]) => p.finished && (Number(p.finishElapsedMs) > 0 || Number(p.finishedAt) > 0))
-              .sort((a,b) => {
-                const elapsed = p => Number(p.finishElapsedMs) > 0
-                  ? Number(p.finishElapsedMs)
-                  : Math.max(1, Number(p.finishedAt) - Number(room.game.startAt || 0));
-                return elapsed(a[1]) - elapsed(b[1]) ||
-                  (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
-                  a[0].localeCompare(b[0]);
-              });
-            finishers.forEach(([,p], index) => { p.finishPosition = index + 1; });
-            room.game.finishCounter = finishers.length;
+            room.game.finishCounter = Number(room.game.finishCounter) || 0;
+            mine.finishPosition = ++room.game.finishCounter;
             return room;
           });
           const mine = result.snapshot.val()?.players?.[currentUid];
