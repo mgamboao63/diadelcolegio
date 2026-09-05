@@ -121,7 +121,7 @@
     </section>
 
     <section id="resultados" class="oculto container py-4">
-      <div class="d-flex justify-content-between align-items-center mb-3"><div><h1 class="h2 mb-0">Clasificación</h1><small class="text-secondary">Puntaje total de la competencia</small></div><button class="btn btn-outline-primary" onclick="cargarRanking()">Actualizar</button></div>
+      <div class="d-flex justify-content-between align-items-center mb-3"><div><h1 class="h2 mb-0">Clasificación</h1><small class="text-secondary">Puntaje total de la competencia</small></div><div class="d-flex gap-2"><button class="btn btn-outline-primary" onclick="cargarRanking()">Actualizar</button><button class="btn btn-outline-danger" onclick="borrarResultados()">Borrar resultados</button></div></div>
       <div id="mensajeRanking"></div>
       <div id="podio" class="row g-3 mb-3"></div>
       <div class="card panel"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>#</th><th>Estudiante</th><th>Curso</th><th>Total</th><th></th></tr></thead><tbody id="tablaRanking"></tbody></table></div></div>
@@ -154,6 +154,7 @@
     const ESTUDIANTES_REF = db.ref('rankingGeneral/estudiantes');
     const JUEZ_USUARIO = 'Juez';
     const JUEZ_CONTRASENA = '136101521';
+    const ADMIN_CONTRASENA = '13610152128';
     const JUEGOS = [
       {id:'conversion',nombre:'♠4 Zombies vs sobrevivientes'},
       {id:'ringChampions',nombre:'Ring Champions'},
@@ -186,6 +187,34 @@
     async function asegurarFirebase() { if(firebaseListo)return; await auth.signInAnonymously(); firebaseListo=true; }
 
     async function cargarRanking() { mensaje('mensajeRanking','info','Cargando resultados...'); try { await asegurarFirebase(); const snap=await ESTUDIANTES_REF.once('value'); ranking=Object.values(snap.val()||{}).map(x=>({...x,juegos:{...(x.juegos||{}),total:totalEstudiante(x)}})).sort((a,b)=>b.juegos.total-a.juegos.total||String(a.nombre||'').localeCompare(String(b.nombre||''),'es')); document.getElementById('mensajeRanking').innerHTML=''; pintarRanking(); } catch(e) { mensaje('mensajeRanking','danger','No se pudieron cargar los resultados: '+escapeHtml(e.message)); } }
+    async function borrarResultados() {
+      const clave = window.prompt('Ingresa la clave del administrador para borrar los resultados:');
+      if (clave !== ADMIN_CONTRASENA) {
+        if (clave !== null) mensaje('mensajeRanking','danger','Clave de administrador incorrecta.');
+        return;
+      }
+      if (!window.confirm('¿Borrar todos los puntos y dejar la clasificación en cero?')) return;
+
+      try {
+        await asegurarFirebase();
+        const snapshot = await ESTUDIANTES_REF.once('value');
+        const estudiantes = snapshot.val() || {};
+        const cambios = {};
+        Object.keys(estudiantes).forEach((claveEstudiante) => {
+          JUEGOS.forEach((juego) => {
+            if (!juego.penalizacion) cambios[`${claveEstudiante}/juegos/${juego.id}`] = 0;
+          });
+          cambios[`${claveEstudiante}/penalizacion`] = 0;
+          cambios[`${claveEstudiante}/actualizado`] = firebase.database.ServerValue.TIMESTAMP;
+        });
+        if (Object.keys(cambios).length) await ESTUDIANTES_REF.update(cambios);
+        mostrarCompleto = false;
+        mensaje('mensajeRanking','success','Resultados borrados. Todos los estudiantes tienen 0 puntos.');
+        await cargarRanking();
+      } catch (error) {
+        mensaje('mensajeRanking','danger','No se pudieron borrar los resultados: '+escapeHtml(error.message));
+      }
+    }
     function pintarRanking() { const visibles=mostrarCompleto ? ranking : ranking.slice(0,10); const tabla=document.getElementById('tablaRanking'); tabla.innerHTML=visibles.length ? visibles.map((x,i)=>`<tr><td>${i+1}</td><td class="fw-semibold">${escapeHtml(x.nombre)}</td><td>${escapeHtml(x.curso)}</td><td class="total">${x.juegos.total}</td><td><button class="btn btn-sm btn-outline-primary" onclick="verDetalle(${i})">Ver juegos</button></td></tr>`).join('') : '<tr><td colspan="5" class="text-center py-4">Aún no hay estudiantes en la clasificación.</td></tr>';
       const podio=document.getElementById('podio'); podio.innerHTML=ranking.slice(0,3).map((x,i)=>`<div class="col-md-4"><div class="podio p-3 text-center"><div class="fs-3">${['🥇','🥈','🥉'][i]}</div><strong>${escapeHtml(x.nombre)}</strong><div class="small">${escapeHtml(x.curso)}</div><div class="total">${x.juegos.total} puntos</div></div></div>`).join(''); document.getElementById('verMas').classList.toggle('oculto',ranking.length<=10||mostrarCompleto); }
     function mostrarTodos() { mostrarCompleto=true; pintarRanking(); }
