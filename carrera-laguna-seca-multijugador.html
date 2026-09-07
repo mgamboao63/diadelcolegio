@@ -710,16 +710,13 @@
 
       function orderedFinishers(players = roomData.players || {}) {
         return Object.entries(players)
-          .filter(([,data]) => data?.finished && Number.isFinite(finishElapsedMs(data)))
-          .sort((a,b) => (Number(a[1].finishPosition) || Infinity) - (Number(b[1].finishPosition) || Infinity) ||
-            finishElapsedMs(a[1]) - finishElapsedMs(b[1]) ||
+          .filter(([,data]) => (data?.finished || Number(data?.finishPosition) > 0) && Number.isFinite(finishElapsedMs(data)))
+          .sort((a,b) => finishElapsedMs(a[1]) - finishElapsedMs(b[1]) ||
             (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
             a[0].localeCompare(b[0]));
       }
 
       function finishRankFor(uid, players = roomData.players || {}) {
-        const directPosition = Number(players[uid]?.finishPosition);
-        if (directPosition > 0) return directPosition;
         const index = orderedFinishers(players).findIndex(([id]) => id === uid);
         return index >= 0 ? index + 1 : 0;
       }
@@ -1552,7 +1549,7 @@
         remoteCars.clear();
         const playerObj = createCarModel(remoteColor(localSlot || 1));
         player = {
-          name: localNickname, isBot: false, slot: localSlot || 1,
+          uid: currentUid, name: localNickname, isBot: false, slot: localSlot || 1,
           meshGroup: playerObj.group, mainBody: playerObj.mainBody,
           x: 0, z: 0, vx: 0, vz: 0, angle: 0,
           progress: 0, previousProgress: 0, lap: 1, hitFlash: 0, finished: false, finishPosition: 0, finishedAt: 0, finishElapsedMs: 0,
@@ -1978,14 +1975,19 @@
           const result = await roomRef.transaction(room => {
             if (!room?.players?.[currentUid] || room.game?.phase !== 'countdown') return;
             const mine = room.players[currentUid];
-            if (Number(mine.finishPosition) > 0) return room;
+            if (mine.finished && Number(mine.finishElapsedMs) > 0) return room;
             mine.finished = true;
             mine.finishedAt = finishTime;
             mine.finishElapsedMs = Math.max(1, finishTime - Number(room.game.startAt || finishTime));
             mine.lap = lapsToWin + 1;
             mine.raceDistance = player.raceDistance;
-            room.game.finishCounter = Number(room.game.finishCounter) || 0;
-            mine.finishPosition = ++room.game.finishCounter;
+            const finishers = Object.entries(room.players)
+              .filter(([,data]) => data?.finished && Number(data.finishElapsedMs) > 0)
+              .sort((a,b) => Number(a[1].finishElapsedMs) - Number(b[1].finishElapsedMs) ||
+                (Number(a[1].finishedAt) || Infinity) - (Number(b[1].finishedAt) || Infinity) ||
+                a[0].localeCompare(b[0]));
+            finishers.forEach(([,data], index) => { data.finishPosition = index + 1; });
+            room.game.finishCounter = finishers.length;
             return room;
           });
           const mine = result.snapshot.val()?.players?.[currentUid];
