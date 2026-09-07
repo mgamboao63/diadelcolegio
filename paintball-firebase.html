@@ -679,6 +679,7 @@
         // Plantillas de modelos personaje
         const personajeFiles = ['personaje1.glb','personaje2.glb','personaje3.glb','personaje4.glb','personaje5.glb','personaje6.glb','personaje7.glb','personaje8.glb','personaje9.glb'];
         const personajeTemplates = [];
+        const personajeLoads = [];
         let personajeReady = false;
         const judgePassword = '136101521';
         const arenaSeed = 240727;
@@ -1073,6 +1074,7 @@
             addTeamMarker(remoteGroup, team === 'red' ? 0xd92828 : 0x1e68ff);
             const placeholder = createRemotePlaceholder(team);
             remoteGroup.add(placeholder);
+            remoteGroup.add(createNicknameLabel(playerData.nickname || 'Jugador'));
 
             scene.add(remoteGroup);
             const remote = {
@@ -1129,12 +1131,41 @@
             return group;
         }
 
+        function createNicknameLabel(nickname) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 96;
+            const context = canvas.getContext('2d');
+            context.fillStyle = 'rgba(7, 12, 22, 0.82)';
+            context.fillRect(8, 8, 496, 80);
+            context.strokeStyle = '#ffffff';
+            context.lineWidth = 4;
+            context.strokeRect(8, 8, 496, 80);
+            context.fillStyle = '#ffffff';
+            context.font = 'bold 42px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(String(nickname).slice(0, 18), 256, 49);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true }));
+            label.name = `Nickname ${nickname}`;
+            label.position.set(0, 225, 0);
+            label.scale.set(150, 28, 1);
+            return label;
+        }
+
         function ensureRemoteVisual(remote, playerData) {
             const team = playerData.team === 'red' ? 'red' : 'blue';
             // Preferir plantilla personaje según avatar index (FFA)
             const avatarIndex = Number(playerData.avatar) || 0;
-            const tpl = personajeTemplates[avatarIndex % (personajeTemplates.length || 1)];
-            const sourceAvatar = tpl && tpl.scene ? tpl.scene : getRemoteSourceAvatar(team);
+            const normalizedAvatarIndex = ((avatarIndex % personajeFiles.length) + personajeFiles.length) % personajeFiles.length;
+            const tpl = personajeTemplates[normalizedAvatarIndex];
+            if (!tpl) {
+                loadPersonajeTemplate(normalizedAvatarIndex).then(() => syncRemotePlayers());
+                return;
+            }
+            const sourceAvatar = tpl.scene;
 
             if (sourceAvatar && !remote.avatarObject) {
                 const remoteAvatar = SkeletonUtils.clone(sourceAvatar);
@@ -1494,6 +1525,10 @@
 
                     if (players.length >= maxPlayersPerTeam) return;
                     const spawnSlot = players.length;
+                    const usedAvatars = new Set(players.map((playerData) => Number(playerData.avatar)).filter(Number.isFinite));
+                    const unusedAvatars = personajeFiles.map((_, index) => index).filter((index) => !usedAvatars.has(index));
+                    const avatarPool = unusedAvatars.length ? unusedAvatars : personajeFiles.map((_, index) => index);
+                    const assignedAvatar = avatarPool[Math.floor(Math.random() * avatarPool.length)];
                     // asignacion libre: 'free'
                     team = 'free';
                     const spawn = getTeamSpawn(team, spawnSlot);
@@ -1501,7 +1536,7 @@
                         uid: firebaseUid,
                         nickname,
                         team,
-                        avatar: Math.floor(Math.random() * personajeFiles.length),
+                        avatar: assignedAvatar,
                         spawnSlot,
                         health: 3,
                         alive: true,
@@ -1538,40 +1573,7 @@
                 localSpawnSlot = getPlayerSpawnSlot(savedPlayer, 0);
                 selectedLobbyAvatar = Number(savedPlayer.avatar) || 0;
                 placePlayerAtTeamSpawn(team, savedPlayer);
-                // Crear avatar local desde plantillas personaje si estan listas
-                if (personajeReady && personajeTemplates[selectedLobbyAvatar]) {
-                    const tpl = personajeTemplates[selectedLobbyAvatar];
-                    const clone = SkeletonUtils.clone(tpl.scene);
-                    avatar = clone;
-                    normalizeAvatarToGround(avatar);
-                    avatar.rotation.y = Math.PI;
-                    avatar.traverse((child) => {
-                        if (child.isMesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
-                        }
-                    });
-                    if (tpl.animations && tpl.animations.length > 0) {
-                        mixer = new THREE.AnimationMixer(avatar);
-                        sharedWalkClip = makeClipInPlace(tpl.animations[0]);
-                        walkAction = mixer.clipAction(sharedWalkClip);
-                        walkLoopStart = 0;
-                        walkLoopEnd = sharedWalkClip.duration;
-                        idlePoseTime = sharedWalkClip.duration * (9 / 15);
-                        walkAction.play();
-                        walkAction.time = idlePoseTime;
-                        walkAction.weight = 1;
-                        walkAction.timeScale = 0;
-                        mixer.update(0.001);
-                    }
-                    player.add(avatar);
-                    tryCreateTeamAvatars();
-                    syncRemotePlayers();
-                } else {
-                    // fallback al cargador FBX original
-                    playerCharacterFile = 'character.fbx';
-                    loadCharacter();
-                }
+                attachLocalPersonaje(selectedLobbyAvatar, nickname);
                 publishLocalPlayerState(true);
                 updateGameStatus(`${nickname} inscrito. Todos son rivales: espera al juez.`);
             }
@@ -1889,10 +1891,18 @@
         }
 
         function loadPersonajeTemplates() {
-            const loader = new GLTFLoader();
-            let remaining = personajeFiles.length;
-            personajeFiles.forEach((file, idx) => {
-                loader.load(file, (gltf) => {
+            // En web no descargamos los nueve GLB a la vez (superan 250 MB).
+            // El modelo asignado se solicita primero y los rivales se cargan al aparecer.
+            loadPersonajeTemplate(0).catch(() => {});
+        }
+
+        function loadPersonajeTemplate(index) {
+            const normalizedIndex = ((Number(index) || 0) % personajeFiles.length + personajeFiles.length) % personajeFiles.length;
+            if (personajeTemplates[normalizedIndex]) return Promise.resolve(personajeTemplates[normalizedIndex]);
+            if (personajeLoads[normalizedIndex]) return personajeLoads[normalizedIndex];
+            const file = personajeFiles[normalizedIndex];
+            personajeLoads[normalizedIndex] = new Promise((resolve, reject) => {
+                new GLTFLoader().load(new URL(file, import.meta.url).href, (gltf) => {
                     const model = gltf.scene;
                     normalizeAvatarToGround(model);
                     model.rotation.y = Math.PI;
@@ -1906,23 +1916,55 @@
                     if (gltf.animations && gltf.animations.length > 0 && !sharedWalkClip) {
                         sharedWalkClip = makeClipInPlace(gltf.animations[0]);
                     }
-                    personajeTemplates[idx] = { scene: model, animations: gltf.animations || [] };
-                    remaining -= 1;
-                    if (remaining === 0) {
-                        personajeReady = true;
-                        tryCreateTeamAvatars();
-                        syncRemotePlayers();
-                    }
+                    personajeTemplates[normalizedIndex] = { scene: model, animations: gltf.animations || [] };
+                    personajeReady = personajeTemplates.some(Boolean);
+                    resolve(personajeTemplates[normalizedIndex]);
                 }, undefined, (err) => {
                     console.error('Error cargando', file, err);
-                    remaining -= 1;
-                    if (remaining === 0) {
-                        personajeReady = true;
-                        tryCreateTeamAvatars();
-                        syncRemotePlayers();
-                    }
+                    personajeLoads[normalizedIndex] = null;
+                    reject(err);
                 });
             });
+            return personajeLoads[normalizedIndex];
+        }
+
+        async function attachLocalPersonaje(index, nickname) {
+            document.getElementById('info').innerText = `Cargando personaje de ${nickname}...`;
+            try {
+                const tpl = await loadPersonajeTemplate(index);
+                if (avatar?.parent === player) player.remove(avatar);
+                avatar = SkeletonUtils.clone(tpl.scene);
+                normalizeAvatarToGround(avatar);
+                avatar.rotation.y = Math.PI;
+                avatar.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                mixer = null;
+                walkAction = null;
+                if (tpl.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(avatar);
+                    sharedWalkClip = makeClipInPlace(tpl.animations[0]);
+                    walkAction = mixer.clipAction(sharedWalkClip);
+                    walkLoopStart = 0;
+                    walkLoopEnd = sharedWalkClip.duration;
+                    idlePoseTime = sharedWalkClip.duration * (9 / 15);
+                    walkAction.play();
+                    walkAction.time = idlePoseTime;
+                    walkAction.weight = 1;
+                    walkAction.timeScale = 0;
+                    mixer.update(0.001);
+                }
+                player.add(avatar);
+                player.add(createNicknameLabel(nickname));
+                document.getElementById('info').innerText = 'Personaje listo: WASD para caminar y espacio para lanzar.';
+                syncRemotePlayers();
+            } catch (error) {
+                console.error('No fue posible cargar el personaje asignado:', error);
+                document.getElementById('info').innerText = `No se pudo cargar ${personajeFiles[index]}. Recarga la pagina para intentarlo de nuevo.`;
+            }
         }
 
         function normalizeAvatarToGround(targetAvatar) {
