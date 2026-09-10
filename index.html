@@ -192,7 +192,7 @@
     function serverNow() { return Date.now() + serverTimeOffset; }
     async function asegurarFirebase() { if(firebaseListo)return; await auth.signInAnonymously(); firebaseListo=true; db.ref('.info/serverTimeOffset').on('value',snap=>{ serverTimeOffset=Number(snap.val())||0; }); }
 
-    let scanFeedbackTimer = null, lastScanErrorAt = 0;
+    let scanFeedbackTimer = null;
     function mostrarFeedbackEscaneo(tipo, texto, duracion = 1200) {
       const elemento = document.getElementById('scanFeedback');
       if (!elemento) return;
@@ -202,10 +202,7 @@
       scanFeedbackTimer = setTimeout(() => { elemento.className = ''; }, duracion);
     }
     function escaneoNoLeido() {
-      const ahora = Date.now();
-      if (ahora - lastScanErrorAt < 1200 || bloqueado) return;
-      lastScanErrorAt = ahora;
-      mostrarFeedbackEscaneo('error', 'NO LEÍDO', 900);
+      // html5-qrcode llama este callback en cada frame sin QR. Eso es espera normal.
     }
 
     async function cargarRanking() { mensaje('mensajeRanking','info','Cargando resultados...'); try { await asegurarFirebase(); const snap=await ESTUDIANTES_REF.once('value'); ranking=Object.values(snap.val()||{}).map(x=>({...x,juegos:{...(x.juegos||{}),total:totalEstudiante(x)}})).sort((a,b)=>b.juegos.total-a.juegos.total||String(a.nombre||'').localeCompare(String(b.nombre||''),'es')); document.getElementById('mensajeRanking').innerHTML=''; pintarRanking(); } catch(e) { mensaje('mensajeRanking','danger','No se pudieron cargar los resultados: '+escapeHtml(e.message)); } }
