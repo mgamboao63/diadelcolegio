@@ -255,6 +255,40 @@
       transition: opacity 0.3s ease, transform 0.3s ease;
     }
 
+    #carrera-laguna-seca-3d .reverse-warning {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(127, 29, 29, 0.42);
+      color: #fff;
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.6rem, 9vw, 7rem);
+      font-weight: 900;
+      text-align: center;
+      text-shadow: 0 0 16px #ef4444, 0 4px 8px #000;
+      z-index: 18;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+    #carrera-laguna-seca-3d .reverse-warning.show { opacity: 1; }
+
+    #carrera-laguna-seca-3d .final-classification {
+      width: min(620px, 84vw);
+      max-height: 48vh;
+      overflow-y: auto;
+      text-align: left;
+    }
+    #carrera-laguna-seca-3d .final-row {
+      display: grid;
+      grid-template-columns: 54px 1fr auto;
+      gap: 12px;
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.2);
+    }
+
     /* Pantalla de Meta / Victoria */
     #carrera-laguna-seca-3d .victory-modal {
       position: absolute;
@@ -450,6 +484,7 @@
 
       <!-- Número de Cuenta Regresiva Gigante -->
       <div class="countdown-big" data-countdown-text></div>
+      <div class="reverse-warning" data-reverse-warning>⚠ VAS EN REVERSA ⚠</div>
 
       <!-- Pantalla de Meta / Resultados -->
       <div class="victory-modal" data-victory-modal>
@@ -532,6 +567,7 @@
       const useItemBtn = root.querySelector('[data-use-item]');
       const lightEls = root.querySelectorAll('[data-light]');
       const countdownBigEl = root.querySelector('[data-countdown-text]');
+      const reverseWarningEl = root.querySelector('[data-reverse-warning]');
       const vignetteEl = root.querySelector('[data-vignette]');
       const victoryModal = root.querySelector('[data-victory-modal]');
       const victoryHeading = root.querySelector('[data-victory-heading]');
@@ -610,6 +646,8 @@
       let raceTime = 0;
       let last = performance.now();
       let finalModalShown = false;
+      let finalClassificationShown = false;
+      let reverseWarningTime = 0;
 
       let scene, camera, renderer;
       let boxes = [];
@@ -680,7 +718,7 @@
             player.finishedAt = Number(mine.finishedAt) || player.finishedAt || 0;
             player.finishElapsedMs = Number(mine.finishElapsedMs) || player.finishElapsedMs || 0;
             player.finished = true;
-            checkRaceEnd(player.finishPosition);
+            showArrivalWaiting();
           }
           const impactAge = Number(mine.impactAt) ? Date.now() + serverTimeOffset - Number(mine.impactAt) : Infinity;
           if (mine.impactId && mine.impactId !== player.lastImpactId && impactAge < 2500) applyIncomingImpact(mine);
@@ -689,6 +727,9 @@
           registered=false; localSlot=null; joinScreen.classList.remove('hidden'); joinStatus.textContent='El juez reinició la sala. Registra tu nickname de nuevo.';
         }
         if (registered && roomData.game.cycle !== lastGameCycle) { lastGameCycle=roomData.game.cycle||0; resetRace(); }
+        const totalPlayers = Object.keys(roomData.players).length;
+        const raceComplete = totalPlayers > 0 && orderedFinishers(roomData.players).length === totalPlayers;
+        if (raceComplete && !isJudgeMode) showFinalClassification(roomData.players);
         if (isJudgeMode && judgeAuthorized) renderJudge();
       }
 
@@ -764,11 +805,11 @@
         }).join('');
 
         const winner = orderedFinishers()[0];
-        const winnerHtml = winner ? `<div class="judge-winner">🏆 GANADOR: ${escapeRaceText(winner[1].nickname)} · PRIMER PUESTO</div>` : '';
+        const winnerHtml = raceComplete && winner ? `<div class="judge-winner">🏆 GANADOR: ${escapeRaceText(winner[1].nickname)} · ${(finishElapsedMs(winner[1]) / 1000).toFixed(3)} s</div>` : '';
         const rows = ordered.map(([uid,data], index) => {
           const finalPosition = finishRankFor(uid);
           const shownPosition = finalPosition || index + 1;
-          const status = finalPosition ? racePositionLabel(finalPosition) : phase === 'lobby' ? `PARRILLA ${Number(data.slot) || index + 1}` : 'EN CARRERA';
+          const status = finalPosition ? `${racePositionLabel(finalPosition)} · ${(finishElapsedMs(data) / 1000).toFixed(3)} s` : phase === 'lobby' ? `PARRILLA ${Number(data.slot) || index + 1}` : 'EN CARRERA';
           return `<div class="judge-result-row ${shownPosition <= 3 ? 'podium' : ''}"><strong>${shownPosition}º</strong><span>${escapeRaceText(data.nickname || 'Jugador')}</span><span>${status}</span></div>`;
         }).join('');
         judgeResults.innerHTML = `${winnerHtml}<div class="judge-track-title">${raceComplete ? 'CLASIFICACIÓN FINAL' : 'CLASIFICACIÓN EN VIVO'}</div><div class="judge-results">${rows}</div>`;
@@ -1593,7 +1634,11 @@
         countdownStart = performance.now();
         last = performance.now();
         finalModalShown = false;
+        finalClassificationShown = false;
+        reverseWarningTime = 0;
+        reverseWarningEl.classList.remove('show');
         victoryModal.classList.remove('show');
+        victoryResetBtn.style.display = 'none';
         if (roomRef) roomRef.child('players').once('value').then(snapshot => syncRemotePlayers(snapshot.val() || {}));
       }
 
@@ -1909,6 +1954,15 @@
         player.previousProgress = player.progress;
         player.progress = nearest.progress;
 
+        const trackDirection = getPointAtProgress(player.progress).tangent;
+        const directionAlongTrack = forwardX * trackDirection.x + forwardZ * trackDirection.z;
+        if (running && !player.finished && directionAlongTrack < -0.28) {
+          reverseWarningTime = Math.min(2, reverseWarningTime + dt);
+        } else {
+          reverseWarningTime = Math.max(0, reverseWarningTime - dt * 2.5);
+        }
+        reverseWarningEl.classList.toggle('show', reverseWarningTime > 0.35);
+
         if (running) {
           let progressDelta = player.progress - player.previousProgress;
           if (progressDelta < -totalLength * 0.5) progressDelta += totalLength;
@@ -1995,7 +2049,7 @@
           player.finishPosition = finishRankFor(currentUid, result.snapshot.val()?.players || {}) || Number(mine.finishPosition);
           player.finishedAt = Number(mine.finishedAt) || finishTime;
           player.finishElapsedMs = Number(mine.finishElapsedMs) || Math.max(1, finishTime - Number(roomData.game?.startAt || finishTime));
-          checkRaceEnd(player.finishPosition);
+          showArrivalWaiting();
         } catch (error) {
           console.error(error);
           finishClaimPending = false;
@@ -2005,12 +2059,23 @@
         finishClaimPending = false;
       }
 
-      function checkRaceEnd(playerRank) {
-        if (finalModalShown || !playerRank) return;
+      function showArrivalWaiting() {
+        if (finalClassificationShown) return;
         finalModalShown = true;
-        const totalPlayers = Object.keys(roomData.players || {}).length || allCars.length || 1;
-        victoryHeading.textContent = `#${playerRank} · ${racePositionLabel(playerRank)}`;
-        victoryStats.textContent = `Puesto definitivo fijado\nTiempo: ${raceTime.toFixed(1)}s\nParticipantes: ${totalPlayers}`;
+        victoryHeading.textContent = 'LLEGADA REGISTRADA';
+        victoryStats.textContent = 'Esperando que todos los participantes terminen para publicar la clasificación oficial…';
+        victoryResetBtn.style.display = 'none';
+        victoryModal.classList.add('show');
+      }
+
+      function showFinalClassification(players = roomData.players || {}) {
+        const finishers = orderedFinishers(players);
+        if (!finishers.length) return;
+        finalModalShown = true;
+        finalClassificationShown = true;
+        victoryHeading.textContent = `🏆 ${finishers[0][1].nickname || 'GANADOR'}`;
+        victoryStats.innerHTML = `<div class="final-classification"><div style="text-align:center;margin-bottom:8px"><b>CLASIFICACIÓN OFICIAL</b></div>${finishers.map(([uid,data],index) => `<div class="final-row"><b>${index + 1}º</b><span>${escapeRaceText(data.nickname || 'Jugador')}</span><span>${(finishElapsedMs(data) / 1000).toFixed(3)} s</span></div>`).join('')}</div>`;
+        victoryResetBtn.style.display = isJudgeMode ? '' : 'none';
         victoryModal.classList.add('show');
       }
 

@@ -1,0 +1,139 @@
+% Mazo de cartas para "Las Cuatro Figuras" - Brasilia Borderland
+% Colegio Brasilia Bosa IED
+%
+% Numeracion del juego (coincide con cuatro-figuras-firebase.html):
+%   1-13  Corazones   14-26 Treboles   27-39 Diamantes   40-52 Picas
+%
+% Cada pagina de caras (frente) va seguida de su pagina de respaldos
+% (escudo + numero). Imprime en orden normal con impresion a doble cara
+% activada en modo "voltear por el lado largo" (long edge). Si tu
+% impresora voltea por el lado corto, cambia \MirrorLongEdge a false.
+%
+% Tamano de carta: 63 mm x 88 mm (poker estandar).
+
+\documentclass[12pt]{article}
+\usepackage[a4paper,margin=5mm]{geometry}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\pagestyle{empty}
+
+\newif\ifMirrorLongEdge
+\MirrorLongEdgetrue % cambia a \MirrorLongEdgefalse si tu impresora voltea por el lado corto
+
+% Fondo decorativo: marca de agua tenue del palo, recortada al borde
+% redondeado de la carta. #1 = grupo de palo (0..3). Se dibuja antes que
+% el escudo o la figura principal para que quede detras de ellos.
+\newcommand{\CardBackground}[1]{%
+  \begin{scope}
+    \clip[rounded corners=3mm] (0.03,0.03) rectangle (6.27,8.77);
+    \fill[\ifcase#1 red\or black\or red\or black\fi!5] (0,0) rectangle (6.3,8.8);
+    \foreach \x in {0.9,3.15,5.4} {
+      \foreach \y in {1.3,3.5,5.7,7.9} {
+        \node[rotate=25, scale=1.4, \ifcase#1 red\or black\or red\or black\fi!25] at (\x,\y) {\ifcase#1 $\heartsuit$\or$\clubsuit$\or$\diamondsuit$\or$\spadesuit$\fi};
+      }
+    }
+  \end{scope}%
+}
+
+% Fondo del respaldo: igual y neutro en las 52 cartas, sin relacion con
+% el palo, para no delatar la figura oculta.
+\newcommand{\CardBackgroundBack}{%
+  \begin{scope}
+    \clip[rounded corners=3mm] (0.03,0.03) rectangle (6.27,8.77);
+    \fill[blue!5] (0,0) rectangle (6.3,8.8);
+    \foreach \x in {0.9,3.15,5.4} {
+      \foreach \y in {1.3,3.5,5.7,7.9} {
+        \node[rotate=25, scale=1.4, blue!25] at (\x,\y) {$\star$};
+      }
+    }
+  \end{scope}%
+}
+
+\newcommand{\CardFront}[1]{%
+  \pgfmathtruncatemacro{\grp}{floor((#1-1)/13)}%
+  \pgfmathtruncatemacro{\ridx}{mod(#1-1,13)}%
+  \begin{tikzpicture}
+    \CardBackground{\grp}
+    \draw[rounded corners=3mm, line width=0.5pt] (0,0) rectangle (6.3,8.8);
+    \node[anchor=north west, align=center, inner sep=1mm] at (0.15,8.7) {%
+      \ifcase\grp \color{red}\or \color{black}\or \color{red}\or \color{black}\fi
+      \bfseries\Large \ifcase\ridx A\or 2\or 3\or 4\or 5\or 6\or 7\or 8\or 9\or 10\or J\or Q\or K\fi\\[-1pt]
+      \ifcase\grp $\heartsuit$\or $\clubsuit$\or $\diamondsuit$\or $\spadesuit$\fi
+    };
+    \node at (3.15,4.4) {%
+      \ifcase\grp \color{red}\or \color{black}\or \color{red}\or \color{black}\fi
+      \scalebox{8}{$\ifcase\grp \heartsuit\or \clubsuit\or \diamondsuit\or \spadesuit\fi$}%
+    };
+  \end{tikzpicture}%
+}
+
+\newcommand{\CardBack}[1]{%
+  \begin{tikzpicture}
+    \CardBackgroundBack
+    \draw[rounded corners=3mm, line width=0.5pt] (0,0) rectangle (6.3,8.8);
+    \node at (3.15,5.1) {\includegraphics[width=4.3cm]{escudo.pdf}};
+    \node[font=\bfseries\Large] at (3.15,1.1) {N.\ #1};
+  \end{tikzpicture}%
+}
+
+\newcommand{\BlankCard}{%
+  \begin{tikzpicture}
+    \path (0,0) rectangle (6.3,8.8);
+  \end{tikzpicture}%
+}
+
+\newcommand{\CardOrBlankFront}[2]{%
+  \pgfmathtruncatemacro{\ncard}{#1+#2}%
+  \ifnum\ncard>52 \BlankCard\else \CardFront{\ncard}\fi
+}
+
+\newcommand{\CardOrBlankBack}[2]{%
+  \pgfmathtruncatemacro{\ncard}{#1+#2}%
+  \ifnum\ncard>52 \BlankCard\else \CardBack{\ncard}\fi
+}
+
+\setlength{\tabcolsep}{1.2mm}
+\newcommand{\FrontPage}[1]{%
+  \begin{center}
+  \begin{tabular}{ccc}
+    \CardOrBlankFront{#1}{0} & \CardOrBlankFront{#1}{1} & \CardOrBlankFront{#1}{2} \\[2mm]
+    \CardOrBlankFront{#1}{3} & \CardOrBlankFront{#1}{4} & \CardOrBlankFront{#1}{5} \\[2mm]
+    \CardOrBlankFront{#1}{6} & \CardOrBlankFront{#1}{7} & \CardOrBlankFront{#1}{8} \\
+  \end{tabular}
+  \end{center}%
+}
+
+% Las columnas se invierten para que, al imprimir a doble cara con
+% volteo por el lado largo, cada respaldo caiga justo detras de su carta.
+\newcommand{\BackPage}[1]{%
+  \begin{center}
+  \ifMirrorLongEdge
+  \begin{tabular}{ccc}
+    \CardOrBlankBack{#1}{2} & \CardOrBlankBack{#1}{1} & \CardOrBlankBack{#1}{0} \\[2mm]
+    \CardOrBlankBack{#1}{5} & \CardOrBlankBack{#1}{4} & \CardOrBlankBack{#1}{3} \\[2mm]
+    \CardOrBlankBack{#1}{8} & \CardOrBlankBack{#1}{7} & \CardOrBlankBack{#1}{6} \\
+  \end{tabular}
+  \else
+  \begin{tabular}{ccc}
+    \CardOrBlankBack{#1}{0} & \CardOrBlankBack{#1}{1} & \CardOrBlankBack{#1}{2} \\[2mm]
+    \CardOrBlankBack{#1}{3} & \CardOrBlankBack{#1}{4} & \CardOrBlankBack{#1}{5} \\[2mm]
+    \CardOrBlankBack{#1}{6} & \CardOrBlankBack{#1}{7} & \CardOrBlankBack{#1}{8} \\
+  \end{tabular}
+  \fi
+  \end{center}%
+}
+
+\begin{document}
+
+\foreach \bloque in {0,...,5} {%
+  \pgfmathtruncatemacro{\inicio}{\bloque*9+1}%
+  \FrontPage{\inicio}
+  \newpage
+  \BackPage{\inicio}
+  \ifnum\bloque<5 \newpage \fi
+}
+
+\end{document}
