@@ -192,7 +192,7 @@
     function serverNow() { return Date.now() + serverTimeOffset; }
     async function asegurarFirebase() { if(firebaseListo)return; await auth.signInAnonymously(); firebaseListo=true; db.ref('.info/serverTimeOffset').on('value',snap=>{ serverTimeOffset=Number(snap.val())||0; }); }
 
-    let scanFeedbackTimer = null;
+    let scanFeedbackTimer = null, codigoEnCamara = null, liberarCodigoTimer = null;
     function mostrarFeedbackEscaneo(tipo, texto, duracion = 1200) {
       const elemento = document.getElementById('scanFeedback');
       if (!elemento) return;
@@ -202,7 +202,10 @@
       scanFeedbackTimer = setTimeout(() => { elemento.className = ''; }, duracion);
     }
     function escaneoNoLeido() {
-      // html5-qrcode llama este callback en cada frame sin QR. Eso es espera normal.
+      // Unos frames sin QR indican que se retiro el codigo y se puede leer otra vez.
+      if (!codigoEnCamara) return;
+      clearTimeout(liberarCodigoTimer);
+      liberarCodigoTimer = setTimeout(() => { codigoEnCamara = null; }, 700);
     }
 
     async function cargarRanking() { mensaje('mensajeRanking','info','Cargando resultados...'); try { await asegurarFirebase(); const snap=await ESTUDIANTES_REF.once('value'); ranking=Object.values(snap.val()||{}).map(x=>({...x,juegos:{...(x.juegos||{}),total:totalEstudiante(x)}})).sort((a,b)=>b.juegos.total-a.juegos.total||String(a.nombre||'').localeCompare(String(b.nombre||''),'es')); document.getElementById('mensajeRanking').innerHTML=''; pintarRanking(); } catch(e) { mensaje('mensajeRanking','danger','No se pudieron cargar los resultados: '+escapeHtml(e.message)); } }
@@ -245,7 +248,45 @@
     function guardarJuego() { const id=document.getElementById('juego').value,j=JUEGOS.find(x=>x.id===id); localStorage.setItem('juego',id); document.getElementById('juegoActual').textContent='Juego activo: '+(j?.nombre||''); }
     function actualizarBotonDeshacer() { const boton=document.getElementById('deshacerPunto'),detalle=document.getElementById('detalleUltimoPunto'); if(!boton||!detalle)return; boton.classList.toggle('oculto',!ultimoRegistro); detalle.classList.toggle('oculto',!ultimoRegistro); detalle.textContent=ultimoRegistro?`Último registro: ${ultimoRegistro.nombre} · ${ultimoRegistro.juegoNombre}`:''; }
     async function deshacerUltimoPunto() { if(!ultimoRegistro||bloqueado)return; const r=ultimoRegistro; if(!confirm(`¿Deshacer el último punto de ${r.nombre} en ${r.juegoNombre}?`))return; bloqueado=true; mensaje('mensajeEscaner','info','Deshaciendo el último punto...'); try { await asegurarFirebase(); const refEstudiante=ESTUDIANTES_REF.child(r.clave); const snap=await refEstudiante.once('value'); if(!snap.exists()||String(snap.val()?.id||'').trim()!==r.id)throw Error('No se encontró el registro original.'); const estudiante=snap.val(),actual=r.penalizacion?Number(estudiante.penalizacion||0):Number(estudiante.juegos?.[r.juegoId]||0); if(actual<1)throw Error('El puntaje ya está en cero y no se puede disminuir.'); const ruta=r.penalizacion?'penalizacion':`juegos/${r.juegoId}`; await refEstudiante.update({[ruta]:firebase.database.ServerValue.increment(-1),actualizado:firebase.database.ServerValue.TIMESTAMP}); ultimoRegistro=null; sessionStorage.removeItem('ultimoRegistro'); actualizarBotonDeshacer(); mensaje('mensajeEscaner','success',`↶ Se retiró el último punto de <strong>${escapeHtml(r.nombre)}</strong> en ${escapeHtml(r.juegoNombre)}.`); } catch(e) { mensaje('mensajeEscaner','danger',escapeHtml(e.message)); } finally { setTimeout(()=>bloqueado=false,1200); } }
-    async function leido(idLeido) { if(bloqueado)return; bloqueado=true; mensaje('mensajeEscaner','info','Registrando puntaje...'); try { await asegurarFirebase(); const id=String(idLeido||'').trim(); if(!id)throw Error('El QR no contiene un identificador.'); const juego=JUEGOS.find(j=>j.id===document.getElementById('juego').value); if(!juego)throw Error('Selecciona un juego válido.'); const clave=claveFirebase(id),refEstudiante=ESTUDIANTES_REF.child(clave); const existente=await refEstudiante.once('value'); if(!existente.exists()||String(existente.val()?.id||'').trim()!==id)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.'); const estudiante=existente.val(); const ultimoEscaneo=Number(estudiante.ultimoEscaneoAt)||0; const restante=60000-(serverNow()-ultimoEscaneo); if(restante>0)throw Error(`Espera ${Math.ceil(restante/1000)} segundos para volver a escanear.`); const transaccion=await refEstudiante.transaction(actual=>{ if(!actual)return; const ultimo=Number(actual.ultimoEscaneoAt)||0; if(serverNow()-ultimo<60000)return; const puntos=juego.penalizacion?Number(actual.penalizacion||0):Number(actual.juegos?.[juego.id]||0); actual.juegos=actual.juegos||{}; if(juego.penalizacion)actual.penalizacion=puntos+1; else actual.juegos[juego.id]=puntos+1; actual.ultimoEscaneoAt=serverNow(); actual.actualizado=firebase.database.ServerValue.TIMESTAMP; return actual; }); if(!transaccion.committed)throw Error('Espera un minuto para volver a escanear.'); const estudianteActual=transaccion.snapshot.val(); const puntaje=juego.penalizacion?Number(estudianteActual.penalizacion||0):Number(estudianteActual.juegos?.[juego.id]||0),total=totalEstudiante(estudianteActual); ultimoRegistro={clave,id,nombre:estudianteActual.nombre,juegoId:juego.id,juegoNombre:juego.nombre,penalizacion:!!juego.penalizacion}; sessionStorage.setItem('ultimoRegistro',JSON.stringify(ultimoRegistro)); actualizarBotonDeshacer(); mostrarFeedbackEscaneo('success','LISTO',1400); mensaje('mensajeEscaner','success',`✅ <strong>${escapeHtml(estudianteActual.nombre)}</strong> (${escapeHtml(estudianteActual.curso)})<br>${juego.penalizacion?'Penalizaciones':'Puntaje del juego'}: ${puntaje} · Total: ${total}`); } catch(e) { mostrarFeedbackEscaneo('error','NO LEÍDO',1400); mensaje('mensajeEscaner','danger',escapeHtml(e.message)); } finally { setTimeout(()=>bloqueado=false,2000); } }
+    async function leido(idLeido) {
+      const id=String(idLeido||'').trim();
+      if(!id||id===codigoEnCamara||bloqueado)return;
+      codigoEnCamara=id;
+      clearTimeout(liberarCodigoTimer);
+      bloqueado=true;
+      mensaje('mensajeEscaner','info','Registrando puntaje...');
+      try {
+        await asegurarFirebase();
+        const juego=JUEGOS.find(j=>j.id===document.getElementById('juego').value);
+        if(!juego)throw Error('Selecciona un juego válido.');
+        const clave=claveFirebase(id),refEstudiante=ESTUDIANTES_REF.child(clave);
+        const existente=await refEstudiante.once('value');
+        if(!existente.exists()||String(existente.val()?.id||'').trim()!==id)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.');
+        const transaccion=await refEstudiante.transaction(actual=>{
+          if(!actual)return;
+          const puntos=juego.penalizacion?Number(actual.penalizacion||0):Number(actual.juegos?.[juego.id]||0);
+          actual.juegos=actual.juegos||{};
+          if(juego.penalizacion)actual.penalizacion=puntos+1;
+          else actual.juegos[juego.id]=puntos+1;
+          actual.ultimoEscaneoAt=serverNow();
+          actual.actualizado=firebase.database.ServerValue.TIMESTAMP;
+          return actual;
+        });
+        if(!transaccion.committed)throw Error('No se pudo registrar el puntaje.');
+        const estudianteActual=transaccion.snapshot.val();
+        const puntaje=juego.penalizacion?Number(estudianteActual.penalizacion||0):Number(estudianteActual.juegos?.[juego.id]||0),total=totalEstudiante(estudianteActual);
+        ultimoRegistro={clave,id,nombre:estudianteActual.nombre,juegoId:juego.id,juegoNombre:juego.nombre,penalizacion:!!juego.penalizacion};
+        sessionStorage.setItem('ultimoRegistro',JSON.stringify(ultimoRegistro));
+        actualizarBotonDeshacer();
+        mostrarFeedbackEscaneo('success','LISTO',1400);
+        mensaje('mensajeEscaner','success',`✅ <strong>${escapeHtml(estudianteActual.nombre)}</strong> (${escapeHtml(estudianteActual.curso)})<br>${juego.penalizacion?'Penalizaciones':'Puntaje del juego'}: ${puntaje} · Total: ${total}`);
+      } catch(e) {
+        mostrarFeedbackEscaneo('error','NO LEÍDO',1400);
+        mensaje('mensajeEscaner','danger',escapeHtml(e.message));
+      } finally {
+        bloqueado=false;
+      }
+    }
 
     asegurarFirebase().catch(e=>console.error('Firebase:',e));
   </script>
