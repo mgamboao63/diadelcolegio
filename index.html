@@ -262,18 +262,13 @@
         const clave=claveFirebase(id),refEstudiante=ESTUDIANTES_REF.child(clave);
         const existente=await refEstudiante.once('value');
         if(!existente.exists()||String(existente.val()?.id||'').trim()!==id)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.');
-        const transaccion=await refEstudiante.transaction(actual=>{
-          if(!actual)return;
-          const puntos=juego.penalizacion?Number(actual.penalizacion||0):Number(actual.juegos?.[juego.id]||0);
-          actual.juegos=actual.juegos||{};
-          if(juego.penalizacion)actual.penalizacion=puntos+1;
-          else actual.juegos[juego.id]=puntos+1;
-          actual.ultimoEscaneoAt=serverNow();
-          actual.actualizado=firebase.database.ServerValue.TIMESTAMP;
-          return actual;
+        const rutaPuntaje=juego.penalizacion?'penalizacion':`juegos/${juego.id}`;
+        await refEstudiante.update({
+          [rutaPuntaje]:firebase.database.ServerValue.increment(1),
+          ultimoEscaneoAt:serverNow(),
+          actualizado:firebase.database.ServerValue.TIMESTAMP
         });
-        if(!transaccion.committed)throw Error('No se pudo registrar el puntaje.');
-        const estudianteActual=transaccion.snapshot.val();
+        const estudianteActual=(await refEstudiante.once('value')).val();
         const puntaje=juego.penalizacion?Number(estudianteActual.penalizacion||0):Number(estudianteActual.juegos?.[juego.id]||0),total=totalEstudiante(estudianteActual);
         ultimoRegistro={clave,id,nombre:estudianteActual.nombre,juegoId:juego.id,juegoNombre:juego.nombre,penalizacion:!!juego.penalizacion};
         sessionStorage.setItem('ultimoRegistro',JSON.stringify(ultimoRegistro));
