@@ -1,7 +1,8 @@
 const HOJA_NOMBRE = "Estudiantes";
 const JUEZ_USUARIO = "Juez";
-const JUEZ_CONTRASENA = "136101521";
+const JUEZ_CONTRASENA_PROPIEDAD = "JUEZ_CONTRASENA";
 const TOTAL_JUEGOS_PUNTUABLES = 10;
+const TOTAL_RESERVAS = 30;
 const PRIMERA_COLUMNA_JUEGO = 7;
 const COLUMNA_PENALIZACION = PRIMERA_COLUMNA_JUEGO + TOTAL_JUEGOS_PUNTUABLES;
 const COLUMNA_TOTAL = COLUMNA_PENALIZACION + 1;
@@ -26,6 +27,10 @@ function numero(valor) {
   return Number(valor) || 0;
 }
 
+function contrasenaJuez() {
+  return PropertiesService.getScriptProperties().getProperty(JUEZ_CONTRASENA_PROPIEDAD) || '';
+}
+
 function nombreEstudiante(fila) {
   return [texto(fila[4]), texto(fila[2])].filter(Boolean).join(' ');
 }
@@ -44,6 +49,47 @@ function datosEstudiante(fila) {
       return juegos;
     })()
   };
+}
+
+function numeroReserva(id) {
+  const m = /^RESERVA-(\d{2})$/.exec(texto(id));
+  if (!m) return 0;
+  const n = Number(m[1]);
+  return n >= 1 && n <= TOTAL_RESERVAS ? n : 0;
+}
+
+function datosReserva(id) {
+  const n = numeroReserva(id);
+  if (!n) return null;
+  const juegos = {};
+  for (let i = 1; i <= TOTAL_JUEGOS_PUNTUABLES; i++) juegos['juego' + i] = 0;
+  juegos.penalizacion = 0;
+  juegos.total = 0;
+  return {
+    id: texto(id),
+    curso: 'Por asignar',
+    nombre: 'Reserva ' + n,
+    juegos: juegos
+  };
+}
+
+function crearFilaReserva(sh, id) {
+  const reserva = datosReserva(id);
+  if (!reserva) return null;
+
+  const fila = sh.getLastRow() + 1;
+  const valores = new Array(COLUMNA_TOTAL).fill('');
+  valores[0] = reserva.id;
+  valores[1] = reserva.curso;
+  valores[2] = reserva.nombre;
+  for (let col = PRIMERA_COLUMNA_JUEGO; col <= COLUMNA_PENALIZACION; col++) {
+    valores[col - 1] = 0;
+  }
+  sh.getRange(fila, 1, 1, COLUMNA_TOTAL).setValues([valores]);
+  sh.getRange(fila, COLUMNA_TOTAL).setFormula(`=SUM(G${fila}:Q${fila})`);
+  SpreadsheetApp.flush();
+
+  return fila;
 }
 
 function doGet(e) {
@@ -74,6 +120,8 @@ function doGet(e) {
         return json({ error: false, estudiante: { id: datos[i][0], ...datosEstudiante(datos[i]) } });
       }
     }
+    const reserva = datosReserva(id);
+    if (reserva) return json({ error: false, estudiante: reserva });
     return json({ error: true, mensaje: 'Estudiante no encontrado' });
   } catch (err) {
     return json({ error: true, mensaje: String(err) });
@@ -81,7 +129,7 @@ function doGet(e) {
 }
 
 function esJuez(req) {
-  return texto(req.usuario) === JUEZ_USUARIO && texto(req.contrasena) === JUEZ_CONTRASENA;
+  return texto(req.usuario) === JUEZ_USUARIO && texto(req.contrasena) === contrasenaJuez();
 }
 
 function doPost(e) {
@@ -134,6 +182,22 @@ function doPost(e) {
         juego: juego,
         puntajeJuego: valor,
         total: sh.getRange(fila, COLUMNA_TOTAL).getValue()
+      });
+    }
+    const filaReserva = crearFilaReserva(sh, id);
+    if (filaReserva) {
+      const columna = juego <= TOTAL_JUEGOS_PUNTUABLES ? PRIMERA_COLUMNA_JUEGO + juego - 1 : COLUMNA_PENALIZACION;
+      const valor = juego <= TOTAL_JUEGOS_PUNTUABLES ? 1 : -1;
+      sh.getRange(filaReserva, columna).setValue(valor);
+      SpreadsheetApp.flush();
+
+      return json({
+        error: false,
+        estudiante: 'Reserva ' + numeroReserva(id),
+        curso: 'Por asignar',
+        juego: juego,
+        puntajeJuego: valor,
+        total: sh.getRange(filaReserva, COLUMNA_TOTAL).getValue()
       });
     }
     return json({ error: true, mensaje: 'No existe el estudiante.' });
