@@ -187,6 +187,13 @@
     function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s ?? ''; return d.innerHTML; }
     function mensaje(id,tipo,texto) { const e=document.getElementById(id); e.innerHTML=`<div class="alert alert-${tipo} mb-0">${texto}</div>`; }
     function claveFirebase(id) { return btoa(unescape(encodeURIComponent(String(id).trim()))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+    function datosReserva(id) {
+      const coincidencia=/^RESERVA-(0[1-9]|[12]\d|30)$/.exec(id);
+      if(!coincidencia)return null;
+      const juegos={};
+      JUEGOS.forEach(juego=>{ if(!juego.penalizacion)juegos[juego.id]=0; });
+      return {id,nombre:`Reserva ${Number(coincidencia[1])}`,curso:'Por asignar',juegos,penalizacion:0};
+    }
     function totalEstudiante(x) { return JUEGOS.reduce((s,j)=>s+(j.penalizacion?0:Number(x.juegos?.[j.id]||0)),0)-Number(x.penalizacion||0); }
     let serverTimeOffset = 0;
     function serverNow() { return Date.now() + serverTimeOffset; }
@@ -261,7 +268,11 @@
         if(!juego)throw Error('Selecciona un juego válido.');
         const clave=claveFirebase(id),refEstudiante=ESTUDIANTES_REF.child(clave);
         const existente=await refEstudiante.once('value');
-        if(!existente.exists()||String(existente.val()?.id||'').trim()!==id)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.');
+        if(!existente.exists()){
+          const reserva=datosReserva(id);
+          if(!reserva)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.');
+          await refEstudiante.set(reserva);
+        } else if(String(existente.val()?.id||'').trim()!==id)throw Error('Estudiante no encontrado. Verifica que la lista esté importada en Firebase.');
         const rutaPuntaje=juego.penalizacion?'penalizacion':`juegos/${juego.id}`;
         await refEstudiante.update({
           [rutaPuntaje]:firebase.database.ServerValue.increment(1),
